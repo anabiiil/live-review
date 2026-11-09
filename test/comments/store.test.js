@@ -53,6 +53,8 @@ test('create validates input', () => {
   assert.throws(() => add(store, { line: 0 }), ValidationError);
   assert.throws(() => add(store, { line: 1.5 }), ValidationError);
   assert.throws(() => add(store, { anchor: { lineText: 1 } }), ValidationError);
+  assert.throws(() => add(store, { anchor: undefined }), ValidationError);
+  assert.throws(() => add(store, { anchor: null }), ValidationError);
   assert.throws(() => add(store, { projectId: 99 }), NotFoundError);
   db.close();
 });

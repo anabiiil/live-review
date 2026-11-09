@@ -221,6 +221,7 @@ test('amending a commit flags its comments as rewritten, and restoring it clears
 test('adding *.yml to extra hidden and wiping clears anchors', async () => {
   await withRepo(async ({ repo, store, live, commentNew }) => {
     await repo.write('ci.yml', 'a: 1\nb: 2\n');
+    await repo.write('ci.txt', 'a: 1\nb: 2\n');
     const c = commentNew(1, 'ci.yml', ['a: 1', 'b: 2', '']);
     const keep = commentNew(1, 'ci.txt', ['a: 1', 'b: 2', '']);
     const ids = store.wipeHidden(1, (p) => p.endsWith('.yml'));
@@ -229,8 +230,9 @@ test('adding *.yml to extra hidden and wiping clears anchors', async () => {
     assert.equal(store.get(c.id).hidden, true);
     assert.notEqual(store.get(keep.id).anchor, null);
     // Wiped comments are ignored by re-anchoring.
-    assert.deepEqual(await reanchorLive({ root: repo.dir, projectId: 1, files: await live(['*.yml']), store }), [keep.id]);
+    assert.deepEqual(await reanchorLive({ root: repo.dir, projectId: 1, files: await live(['*.yml']), store }), []);
     assert.equal(store.get(c.id).outdated, false);
+    assert.equal(store.get(keep.id).outdated, false);
   });
 });
 

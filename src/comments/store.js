@@ -152,17 +152,17 @@ export function createCommentStore(db) {
   return {
     /**
      * Create a top-level comment. Pass the FileDiff for `path` as `file` so hidden and binary files are rejected.
-     * @param {{projectId:number, target:string, path:string, line:number, side:'old'|'new', anchor?:Anchor|null,
+     * @param {{projectId:number, target:string, path:string, line:number, side:'old'|'new', anchor:Anchor,
      *   authorEmail:string, body:string, now?:number, file?:FileDiff|null, extraHidden?:string[]}} input
      * @returns {Comment}
      */
-    create({ projectId, target, path, line, side, anchor = null, authorEmail, body, now = Date.now(), file = null, extraHidden = [] }) {
+    create({ projectId, target, path, line, side, anchor, authorEmail, body, now = Date.now(), file = null, extraHidden = [] }) {
       const text = checkBody(body);
       if (side !== 'old' && side !== 'new') throw new ValidationError('side must be old or new');
       if (!Number.isInteger(line) || line < 1) throw new ValidationError('line must be a positive integer');
       if (typeof target !== 'string' || target === '') throw new ValidationError('target is required');
       if (typeof path !== 'string' || path === '') throw new ValidationError('path is required');
-      if (anchor !== null && !isAnchor(anchor)) throw new ValidationError('invalid anchor');
+      if (!isAnchor(anchor)) throw new ValidationError('invalid anchor');
       if (isHidden(path, extraHidden) || file?.hidden || file?.binary) {
         throw new ValidationError('comments are not allowed on hidden or binary files');
       }
@@ -172,7 +172,7 @@ export function createCommentStore(db) {
           `INSERT INTO comments(project_id, parent_id, target, path, line, side, anchor, author_email, body, created_at, updated_at)
            VALUES(?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(projectId, target, path, line, side, anchor ? JSON.stringify(anchor) : null, normalizeEmail(authorEmail), text, now, now);
+        .run(projectId, target, path, line, side, JSON.stringify(anchor), normalizeEmail(authorEmail), text, now, now);
       return need(Number(r.lastInsertRowid));
     },
 

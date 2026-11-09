@@ -41,12 +41,14 @@ async function workingTreeFile(root, path) {
   }
 }
 
-/** Comments that can be matched: anchored (not wiped) top-level comments with a line and side. */
+/** Comments that can be matched. Only hidden (wiped) comments have no anchor; they are skipped. */
 const matchable = (/** @type {Comment} */ c) => c.anchor !== null && !c.hidden && c.line !== null && c.side !== null;
 
 /**
  * Re-anchor live comments against the current live diff. Comments move with their line;
  * a comment whose line is gone from the diff is marked outdated.
+ * When a new commit has just landed, call attachOnCommit BEFORE this: the tree is then clean,
+ * so running this first would mark the committed comments outdated.
  * @param {{root:string, projectId:number, files:FileDiff[], store:ReturnType<typeof import('./store.js').createCommentStore>, extraHidden?:string[]}} args
  * @returns {Promise<number[]>} ids of comments whose line or outdated flag changed
  */
@@ -87,6 +89,7 @@ export async function reanchorLive({ root, projectId, files, store, extraHidden 
 /**
  * After a new commit, move live comments that landed in it onto the commit.
  * Comments that do not match are left alone (the next reanchorLive marks them).
+ * Must run BEFORE reanchorLive for the same change, otherwise the clean tree outdates the comments first.
  * @param {{root:string, projectId:number, sha:string, commitFiles:FileDiff[], store:ReturnType<typeof import('./store.js').createCommentStore>}} args
  * @returns {Promise<number[]>} ids of comments now targeting `sha`
  */
