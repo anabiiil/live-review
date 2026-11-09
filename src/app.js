@@ -30,7 +30,7 @@ const isAdminPath = (pathname) =>
  * @param {unknown} err
  * @returns {[number, Record<string,string>]}
  */
-function errorResponse(err) {
+export function errorResponse(err) {
   if (err instanceof HttpError) {
     return [err.status, err.detail === undefined ? { error: err.error } : { error: err.error, message: err.detail }];
   }
@@ -40,8 +40,11 @@ function errorResponse(err) {
   }
   if (err instanceof ForbiddenError) return [403, { error: 'forbidden' }];
   if (err instanceof NotFoundError) return [404, { error: 'not-found' }];
-  if (err instanceof RepoError && err.reason === 'missing') return [503, { error: 'project-unavailable' }];
-  if (err instanceof RepoError && err.reason === 'unknown-commit') return [404, { error: 'not-found' }];
+  if (err instanceof RepoError) {
+    if (err.reason === 'unknown-commit') return [404, { error: 'not-found' }];
+    if (err.reason !== 'missing') console.error(`LiveReview project unavailable: ${err.reason}`);
+    return [503, { error: 'project-unavailable' }];
+  }
   console.error('LiveReview request failed:', err);
   return [500, { error: 'internal' }];
 }

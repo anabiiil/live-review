@@ -308,6 +308,16 @@ export function createCommentStore(db) {
     },
 
     /**
+     * Whether the project has any top-level comment on `target` (exact match).
+     * @param {number} projectId
+     * @param {string} target
+     * @returns {boolean}
+     */
+    hasTarget(projectId, target) {
+      return db.prepare('SELECT 1 AS x FROM comments WHERE project_id = ? AND target = ? AND parent_id IS NULL LIMIT 1').get(projectId, target) !== undefined;
+    },
+
+    /**
      * Clear anchors and flag as hidden every top-level comment whose path matches.
      * @param {number} projectId
      * @param {(path:string)=>boolean} predicate

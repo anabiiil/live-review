@@ -9,7 +9,8 @@ import { runGit } from './run.js';
 /** Object id of git's empty tree; the "before" side when diffing a root commit. */
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
-const SHA_RE = /^[0-9a-f]{7,40}$/;
+/** A full or abbreviated (7-40 hex) commit id. */
+export const SHA_RE = /^[0-9a-f]{7,40}$/;
 
 /** Error for repository-level problems; `reason` is a stable machine-readable code. */
 export class RepoError extends Error {

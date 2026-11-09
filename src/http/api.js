@@ -2,7 +2,7 @@ import { lstat, readFile, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { normalizeEmail } from '../db.js';
-import { RepoError, commitInfo, fileAt, listCommits } from '../git/repo.js';
+import { RepoError, SHA_RE, commitInfo, fileAt, isReachable, listCommits } from '../git/repo.js';
 import { commitDiff, liveDiff } from '../git/diff.js';
 import { SLUG_RE } from '../projects/store.js';
 import { ValidationError } from '../comments/store.js';
@@ -18,7 +18,6 @@ import { SESSION_COOKIE, clearSessionCookie, parseCookies, sessionCookie } from 
 /** @typedef {import('../comments/store.js').Comment} Comment */
 /** @typedef {import('./router.js').RouteContext} RouteContext */
 
-const SHA_RE = /^[0-9a-f]{7,40}$/;
 const LOGIN_PAD_MS = 800;
 const COMMITS_PER_PAGE = 20;
 const MAX_PAGE = 10000;
@@ -127,6 +126,21 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     return c;
   };
 
+  /**
+   * Resolve a commit id to its full sha, but only for commits the project may show: reachable from a
+   * branch, or already commented on (rewritten history stays viewable). Dangling and stash commits are 404.
+   * @param {Project} p
+   * @param {string} sha
+   * @returns {Promise<string>}
+   */
+  const viewableCommit = async (p, sha) => {
+    if (!SHA_RE.test(sha)) throw notFound();
+    await ensureRepo(p.path);
+    const full = (await commitInfo(p.path, sha)).sha;
+    if (!comments.hasTarget(p.id, full) && !(await isReachable(p.path, full))) throw notFound();
+    return full;
+  };
+
   // ---- sign-in -----------------------------------------------------------------------------
 
   router.add(
@@ -138,7 +152,19 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
         if (email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email)) {
           const ip = String(req.headers['cf-connecting-ip'] ?? '') || 'unknown';
           const { code } = codes.requestCode(email, ip, now());
-          if (code) await emailSender.send({ to: email, ...codeEmail(code) });
+          // Not awaited: the provider's latency must not reveal who is a member. The sender never puts the
+          // API key in its result or errors, so logging them is safe.
+          if (code) {
+            Promise.resolve()
+              .then(() => emailSender.send({ to: email, ...codeEmail(code) }))
+              .then(
+                (r) => {
+                  const result = /** @type {{ok?:boolean, error?:string}|undefined} */ (r);
+                  if (result?.ok === false) console.error('login email failed:', result.error);
+                },
+                (err) => console.error('login email failed:', err instanceof Error ? err.message : String(err)),
+              );
+          }
         }
       } catch (err) {
         console.error('login request failed:', err instanceof Error ? err.message : err);
@@ -220,19 +246,21 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
 
   router.add('GET', '/api/p/:slug/commit/:sha', async ({ res, viewer, params }) => {
     const p = projectFor(/** @type {Viewer} */ (viewer), params.slug);
-    if (!SHA_RE.test(params.sha)) throw notFound();
-    await ensureRepo(p.path);
-    const files = await commitDiff(p.path, params.sha, { extraHidden: p.extraHidden });
-    const commit = await commitInfo(p.path, params.sha);
+    const sha = await viewableCommit(p, params.sha);
+    const files = await commitDiff(p.path, sha, { extraHidden: p.extraHidden });
+    const commit = await commitInfo(p.path, sha);
     sendJson(res, 200, { commit, files });
   });
 
   // ---- comments ----------------------------------------------------------------------------
 
-  router.add('GET', '/api/p/:slug/comments', ({ res, viewer, params, query }) => {
+  router.add('GET', '/api/p/:slug/comments', async ({ res, viewer, params, query }) => {
     const p = projectFor(/** @type {Viewer} */ (viewer), params.slug);
-    const target = query.get('target') ?? '';
+    let target = query.get('target') ?? '';
     if (target !== 'live' && !SHA_RE.test(target)) throw new ValidationError('target must be "live" or a commit sha');
+    // A full sha is answered from the database alone, so rewritten threads stay readable even when the
+    // repository is unavailable; an abbreviated one is resolved (and gated) through git.
+    if (target !== 'live' && target.length < 40) target = await viewableCommit(p, target);
     const all = comments.forTarget(p.id, target);
     sendJson(res, 200, {
       threads: all.filter((t) => !t.outdated).map(publicComment),
@@ -261,7 +289,7 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
       files = (await liveDiff(p.path, { extraHidden: p.extraHidden })).files;
       storedTarget = 'live';
     } else {
-      storedTarget = (await commitInfo(p.path, target)).sha;
+      storedTarget = await viewableCommit(p, target);
       files = await commitDiff(p.path, storedTarget, { extraHidden: p.extraHidden });
     }
     const file = files.find((f) => f.path === path);

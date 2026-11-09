@@ -2,6 +2,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESERVED_SLUGS, SLUG_RE } from '../projects/store.js';
+import { SHA_RE } from '../git/repo.js';
 import { redirect, sendHtml, sendJson } from './router.js';
 import { sessionCookie } from './guards.js';
 
@@ -22,7 +23,6 @@ const TYPES = {
   '.png': 'image/png',
 };
 
-const SHA_RE = /^[0-9a-f]{7,40}$/;
 const NOT_FOUND_HTML = 'Not found.';
 const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your terminal.';
 

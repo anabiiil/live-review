@@ -5,7 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../../src/db.js';
-import { createApp } from '../../src/app.js';
+import { createApp, errorResponse } from '../../src/app.js';
+import { RepoError } from '../../src/git/repo.js';
 import { makeTmpRepo } from '../helpers/tmpRepo.js';
 import { request, seenBodies } from '../helpers/http.js';
 
@@ -38,7 +39,12 @@ async function setup() {
   const repo = await makeTmpRepo();
   await repo.write('src/a.js', 'one\ntwo\nthree\n');
   await repo.write('.gitignore', 'node_modules\n');
+  await repo.write('config/.env.production', `TOKEN=${SECRET}\n`);
   await repo.commit('initial');
+  // Commits on no branch: one dangling, one reset away after it was commented on.
+  const tree = (await repo.git('rev-parse', 'HEAD^{tree}')).trim();
+  const dangling = (await repo.git('commit-tree', tree, '-p', 'HEAD', '-m', 'dangling')).trim();
+  const rewrittenSha = (await repo.git('commit-tree', tree, '-p', 'HEAD', '-m', 'rewritten')).trim();
   await repo.write('src/a.js', 'one\nTWO\nthree\n');
   await repo.write('.env', `TOKEN=${SECRET}\n`);
   const other = await makeTmpRepo();
@@ -55,8 +61,12 @@ async function setup() {
   projects.addMember(nwc.id, 'alice@example.com');
   projects.addMember(goneP.id, 'alice@example.com');
   projects.addMember(otherP.id, 'bob@example.com');
+  app.services.comments.create({
+    projectId: nwc.id, target: rewrittenSha, path: 'src/a.js', line: 1, side: 'new',
+    anchor: { lineText: 'one', before: [], after: ['two'] }, authorEmail: 'alice@example.com', body: 'old note',
+  });
 
-  return { dataDir, db, app, ports, sent, repo, other, gone, nwc, otherP, goneP };
+  return { config, dataDir, db, app, ports, sent, repo, other, gone, nwc, otherP, goneP, dangling, rewrittenSha };
 }
 
 /**
@@ -122,7 +132,7 @@ test('reviewer sees only member projects; no-access and unknown give identical 4
   assert.equal(list.status, 200);
   assert.deepEqual(list.json(), [
     { slug: 'gone', name: 'Gone', open: 0 },
-    { slug: 'nwc-legal', name: 'NWC Legal', open: 0 },
+    { slug: 'nwc-legal', name: 'NWC Legal', open: 1 },
   ]);
   const a = await pub('/api/p/other/live', { cookie });
   const b = await pub('/api/p/does-not-exist/live', { cookie });
@@ -166,6 +176,37 @@ test('commits list, commit detail and unknown commit', async () => {
   assert.equal(unknown.status, 404);
   const bad = await pub('/api/p/nwc-legal/commit/zzz', { cookie });
   assert.equal(bad.status, 404);
+});
+
+test('a .env committed in history is redacted in the commit view', async () => {
+  const cookie = await aliceCookie();
+  const { commits } = (await pub('/api/p/nwc-legal/commits', { cookie })).json();
+  const res = await pub(`/api/p/nwc-legal/commit/${commits[0].sha}`, { cookie });
+  assert.equal(res.status, 200);
+  const env = res.json().files.find((/** @type {any} */ f) => f.path === 'config/.env.production');
+  assert.equal(env.hidden, true);
+  assert.ok(!res.body.includes(SECRET));
+});
+
+test('commits on no branch are 404 unless they already have comments', async () => {
+  const cookie = await aliceCookie();
+  for (const sha of [ctx.dangling, ctx.dangling.slice(0, 10)]) {
+    const get = await pub(`/api/p/nwc-legal/commit/${sha}`, { cookie });
+    assert.equal(get.status, 404, sha);
+    assert.deepEqual(get.json(), { error: 'not-found' });
+    const post = await pub('/api/p/nwc-legal/comments', {
+      method: 'POST', cookie, body: { target: sha, path: 'src/a.js', line: 1, side: 'new', body: 'x' },
+    });
+    assert.equal(post.status, 404, sha);
+    assert.equal((await pub(`/api/p/nwc-legal/comments?target=${sha.slice(0, 10)}`, { cookie })).status, 404);
+  }
+  const kept = await pub(`/api/p/nwc-legal/commit/${ctx.rewrittenSha}`, { cookie });
+  assert.equal(kept.status, 200);
+  assert.equal(kept.json().commit.sha, ctx.rewrittenSha);
+  const short = await pub(`/api/p/nwc-legal/comments?target=${ctx.rewrittenSha.slice(0, 8)}`, { cookie });
+  assert.equal(short.status, 200);
+  assert.equal(short.json().threads.length, 1);
+  assert.equal(short.json().threads[0].body, 'old note');
 });
 
 test('comments: create with server anchor, list, reply, edit, resolve, delete', async () => {
@@ -244,6 +285,49 @@ test('login request: 200 for everyone, padded to 800 ms, email only for members;
   assert.equal((await pub('/api/me', { cookie })).status, 401);
 });
 
+test('login request does not wait for a slow email provider', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'livereview-data-'));
+  const db = openDb(join(dataDir, 'livereview.db'));
+  /** @type {string[]} */
+  const delivered = [];
+  /** @type {Promise<unknown>[]} */
+  const pending = [];
+  const emailSender = {
+    /** @param {{to:string}} m */
+    send(m) {
+      const p = new Promise((r) => setTimeout(r, 1500)).then(() => {
+        delivered.push(m.to);
+        return { ok: true };
+      });
+      pending.push(p);
+      return p;
+    },
+  };
+  const app = createApp({ config: { ...ctx.config, publicPort: 0, adminPort: 0 }, db, emailSender });
+  const { publicPort } = await app.start();
+  const p = await app.services.projects.add({ path: ctx.other.dir, name: 'Slow' });
+  app.services.projects.addMember(p.id, 'carol@example.com');
+  /** @param {string} email */
+  const ask = (email) => request(publicPort, {
+    method: 'POST', path: '/api/login/request', headers: { Host: HOST, Origin: ORIGIN }, body: { email },
+  });
+  try {
+    const member = await ask('carol@example.com');
+    const stranger = await ask('nobody@example.com');
+    for (const r of [member, stranger]) {
+      assert.equal(r.status, 200);
+      assert.ok(r.ms >= 800 && r.ms < 1300, `took ${r.ms}`);
+    }
+    assert.equal(pending.length, 1);
+    await Promise.all(pending);
+    assert.deepEqual(delivered, ['carol@example.com']);
+  } finally {
+    await app.stop();
+    db.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('deleted project folder gives 503 while the project list still works', async () => {
   const cookie = await aliceCookie();
   await rm(ctx.gone.dir, { recursive: true, force: true });
@@ -295,6 +379,17 @@ test('request body limits and JSON validation', async () => {
     method: 'POST', path: '/api/me/name', headers: { Host: HOST, Origin: ORIGIN, Cookie: cookie }, raw: '{nope',
   });
   assert.equal(bad.status, 400);
+});
+
+test('every RepoError maps to 503 project-unavailable except unknown-commit (404)', (t) => {
+  const logged = /** @type {unknown[][]} */ ([]);
+  t.mock.method(console, 'error', (/** @type {unknown[]} */ ...args) => logged.push(args));
+  for (const reason of ['missing', 'forbidden', 'not-a-repo', 'not-root']) {
+    assert.deepEqual(errorResponse(new RepoError(reason)), [503, { error: 'project-unavailable' }], reason);
+  }
+  assert.deepEqual(errorResponse(new RepoError('unknown-commit')), [404, { error: 'not-found' }]);
+  assert.equal(logged.length, 3);
+  for (const args of logged) assert.equal(args.length, 1);
 });
 
 test('.env content never appears in any response body', () => {

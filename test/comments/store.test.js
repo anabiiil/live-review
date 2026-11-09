@@ -235,3 +235,13 @@ test('updatePosition moves replies with their thread', () => {
   assert.equal(store.forTarget(1, 'abc1234')[0].replies.length, 1);
   db.close();
 });
+
+test('hasTarget tells whether a project has top-level comments on a target', () => {
+  const { db, store } = setup();
+  assert.equal(store.hasTarget(1, 'abc1234'), false);
+  add(store, { target: 'abc1234' });
+  assert.equal(store.hasTarget(1, 'abc1234'), true);
+  assert.equal(store.hasTarget(2, 'abc1234'), false);
+  assert.equal(store.hasTarget(1, 'abc12'), false);
+  db.close();
+});
