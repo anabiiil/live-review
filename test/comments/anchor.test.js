@@ -77,14 +77,41 @@ test('anchor at line 1 (no before context) works', () => {
   assert.equal(findAnchor(['zero', ...base], anchor, 1), 2);
 });
 
-test('last line works, with and without a trailing newline element', () => {
+test('last line works', () => {
   const anchor = makeAnchor(base, 8);
   assert.equal(findAnchor(base, anchor, 8), 8);
+});
 
+test('trailing empty element is end-of-file: sentinel line is out of range', () => {
   const withNl = [...base, ''];
-  const anchorNl = makeAnchor(withNl, 8);
-  assert.equal(findAnchor(withNl, anchorNl, 8), 8);
-  assert.equal(findAnchor(['top', ...withNl], anchorNl, 8), 9);
+  assert.throws(() => makeAnchor(withNl, 9), RangeError);
+  assert.deepEqual(makeAnchor(withNl, 8), makeAnchor(base, 8));
+});
+
+test('last-line anchor survives an appended line', () => {
+  const withNl = [...base, ''];
+  const anchor = makeAnchor(withNl, 8);
+  assert.equal(findAnchor([...base, 'nine', ''], anchor, 8), 8);
+  assert.equal(findAnchor([...base, 'nine'], anchor, 8), 8);
+});
+
+test('last-line anchor from a file with final newline matches one without', () => {
+  const anchor = makeAnchor([...base, ''], 8);
+  assert.equal(findAnchor(base, anchor, 8), 8);
+  assert.equal(findAnchor(['top', ...base], anchor, 8), 9);
+});
+
+test('last-line anchor from a file without final newline survives appends', () => {
+  const anchor = makeAnchor(base, 8);
+  assert.equal(findAnchor([...base, 'nine'], anchor, 8), 8);
+  assert.equal(findAnchor([...base, ''], anchor, 8), 8);
+});
+
+test('non-finite oldLine is treated as 1', () => {
+  const lines = ['x', 'a', 'x', 'a'];
+  const anchor = { lineText: 'a', before: [], after: [] };
+  assert.equal(findAnchor(lines, anchor, NaN), 2);
+  assert.equal(findAnchor(lines, anchor, undefined), 2);
 });
 
 test('candidate lacking stored surrounding lines fails', () => {
