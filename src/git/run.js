@@ -18,6 +18,16 @@ export class GitError extends Error {
   }
 }
 
+/** Variables that would redirect git to a different repository than `cwd`. */
+const REDIRECTING_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES', 'GIT_COMMON_DIR'];
+
+/** @returns {NodeJS.ProcessEnv} */
+function gitEnv() {
+  const env = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' };
+  for (const key of REDIRECTING_ENV) delete env[key];
+  return env;
+}
+
 /**
  * Run git without a shell. Output is collected as UTF-8.
  * @param {string} cwd
@@ -30,7 +40,7 @@ export function runGit(cwd, args, opts = {}) {
     const child = spawn('git', ['-c', 'core.quotepath=false', ...args], {
       cwd,
       windowsHide: true,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' },
+      env: gitEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     /** @type {Buffer[]} */
