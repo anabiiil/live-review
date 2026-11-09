@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
 import { createProjectStore, StoreError } from './projects/store.js';
 import { createCommentStore, ForbiddenError, NotFoundError, ValidationError } from './comments/store.js';
@@ -8,6 +9,7 @@ import { RepoError } from './git/repo.js';
 import { HttpError, createRouter, readJsonBody, sendJson } from './http/router.js';
 import { hostAllowed, isStateChanging, originAllowed, resolveViewer } from './http/guards.js';
 import { registerApi } from './http/api.js';
+import { registerAdminApi } from './http/adminApi.js';
 import { registerPages, unauthenticatedPage } from './http/pages.js';
 
 /** @typedef {import('./config.js').Config} Config */
@@ -63,7 +65,11 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
   const codes = createCodeService(db, { isAllowedEmail: (email) => hasMembership.get(email) !== undefined });
   const sessions = createSessionService(db);
   const owner = createOwnerAuth();
-  const sender = emailSender ?? createEmailSender({ apiKey: config.resendApiKey, from: config.fromEmail, fetch });
+  const buildSender = () => createEmailSender({ apiKey: config.resendApiKey, from: config.fromEmail, fetch });
+  let currentSender = emailSender ?? buildSender();
+  // Callers hold this wrapper, so a config change can swap the real sender underneath them.
+  const sender = { send: (/** @type {{to:string, subject:string, text:string}} */ m) => currentSender.send(m) };
+  const events = new EventEmitter();
   const userNameQ = db.prepare('SELECT name FROM users WHERE email = ?');
   /** @param {string} email */
   const userName = (email) => {
@@ -77,6 +83,12 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
 
   const router = createRouter();
   registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions });
+  registerAdminApi(router, {
+    config, db, now, emailSender: sender, projects, comments, sessions, owner, events,
+    onConfigChange: () => {
+      if (!emailSender) currentSender = buildSender();
+    },
+  });
   registerPages(router, { projects, sessions, now });
 
   /**
@@ -151,6 +163,8 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
 
   return {
     services,
+    /** Emits `member-removed` ({projectId, email}) when the owner removes a member (or deletes a project). */
+    events,
 
     /** @returns {Promise<{publicPort:number, adminPort:number}>} */
     async start() {

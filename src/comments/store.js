@@ -284,6 +284,21 @@ export function createCommentStore(db) {
     },
 
     /**
+     * Newest-first unresolved, non-outdated, non-hidden top-level threads across all projects (the owner's inbox).
+     * @param {number} [limit]
+     * @returns {Thread[]}
+     */
+    recentOpenThreads(limit = 200) {
+      const rows = db
+        .prepare(
+          `${SELECT} WHERE c.parent_id IS NULL AND c.resolved = 0 AND c.outdated = 0 AND c.hidden = 0
+           ORDER BY c.created_at DESC, c.id DESC LIMIT ?`,
+        )
+        .all(limit);
+      return withReplies(rows.map(toComment));
+    },
+
+    /**
      * Top-level live comments that are not outdated.
      * @param {number} projectId
      * @returns {Comment[]}

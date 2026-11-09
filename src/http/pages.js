@@ -55,6 +55,28 @@ export function shell({ title }) {
 }
 
 /**
+ * The owner's admin page shell (admin listener only). No inline scripts (CSP).
+ * @param {{title:string}} p
+ * @returns {string}
+ */
+export function adminShell({ title }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/admin.js"></script>
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>
+`;
+}
+
+/**
  * A static message page (no scripts).
  * @param {string} message
  * @returns {string}
