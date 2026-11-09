@@ -1,0 +1,19 @@
+{
+  "name": "livereview",
+  "version": "0.1.0",
+  "description": "Live read-only view of a git working tree and commits for invited reviewers",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node bin/livereview.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "chokidar": "^4",
+    "diff2html": "^3",
+    "ws": "^8"
+  }
+}
