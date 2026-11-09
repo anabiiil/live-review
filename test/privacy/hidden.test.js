@@ -101,3 +101,10 @@ test('redactFiles keeps binary and large flags and honours extra globs', () => {
   assert.equal(out[0].hidden, true);
   assert.equal(out[1].hidden, true);
 });
+
+test('names containing line terminators cannot escape a glob', () => {
+  assert.equal(isHidden('a/x\ny.pem'), true);
+  assert.equal(isHidden('a\nsecret'), true);
+  assert.equal(isHidden('a/x\r\ny z.key'), true);
+  assert.equal(isHidden('a/b\nc.yml', ['*.yml']), true);
+});

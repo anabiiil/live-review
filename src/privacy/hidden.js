@@ -22,7 +22,7 @@ function globToRegExp(glob) {
       .split('*')
       .map((part) => part.replace(/[.+?^${}()|[\]\\/]/g, '\\$&'))
       .join('.*');
-    re = new RegExp(`^${body}$`, 'i');
+    re = new RegExp(`^${body}$`, 'is');
     cache.set(glob, re);
   }
   return re;
@@ -34,6 +34,7 @@ function basename(path) {
 }
 
 /**
+ * Extra patterns are matched against the basename only, so a pattern containing "/" never matches.
  * @param {string} path
  * @param {string[]} [extra] additional basename globs
  * @returns {boolean}
