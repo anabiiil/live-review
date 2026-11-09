@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, symlink, writeFile, chmod, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile, chmod, mkdir, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseWithDiff2Html } from 'diff2html';
@@ -259,6 +259,58 @@ test('liveDiff: untracked binary file is flagged without content', async () => {
     assert.deepEqual(f.hunks, []);
     assert.ok(f.patch.startsWith('diff --git a/img.bin b/img.bin\nnew file mode 100644\n'));
     assert.ok(f.patch.includes('Binary files /dev/null and b/img.bin differ'));
+  });
+});
+
+test('liveDiff: a binary file is rejected after only the 8 KB sniff read', async () => {
+  await withRepo(async (repo) => {
+    await repo.write('a.txt', 'a\n');
+    await repo.commit('init');
+    const body = Buffer.alloc(900 * 1024, 0x61);
+    body[10] = 0;
+    await repo.write('blob.bin', body);
+    const probe = await open(join(repo.dir, 'a.txt'));
+    const proto = Object.getPrototypeOf(probe);
+    await probe.close();
+    const original = proto.read;
+    let total = 0;
+    proto.read = async function (...args) {
+      const res = await original.apply(this, args);
+      total += res.bytesRead;
+      return res;
+    };
+    let res;
+    try {
+      res = await liveDiff(repo.dir, { extraHidden: [] });
+    } finally {
+      proto.read = original;
+    }
+    const f = byPath(res.files, 'blob.bin');
+    assert.equal(f.binary, true);
+    assert.deepEqual(f.hunks, []);
+    assert.ok(total <= 8192 + 2, `read ${total} bytes`);
+  });
+});
+
+test('liveDiff: tracked binaries with " and " in the name keep their path and are redacted', async () => {
+  await withRepo(async (repo) => {
+    const bin = (n) => Buffer.from([0, 1, 2, n]);
+    await repo.write('foo and secret.dat', bin(1));
+    await repo.write('plain and x.bin', bin(1));
+    await repo.commit('init');
+    await repo.write('foo and secret.dat', bin(2));
+    await repo.write('plain and x.bin', bin(2));
+    const res = await liveDiff(repo.dir, { extraHidden: [] });
+    const secret = byPath(res.files, 'foo and secret.dat');
+    assert.ok(secret, JSON.stringify(res.files.map((f) => f.path)));
+    assert.equal(secret.hidden, true);
+    const plain = byPath(res.files, 'plain and x.bin');
+    assert.ok(plain);
+    assert.equal(plain.hidden, false);
+    assert.equal(plain.binary, true);
+    // extraHidden applies to the full basename too
+    const res2 = await liveDiff(repo.dir, { extraHidden: ['*x.bin'] });
+    assert.equal(byPath(res2.files, 'plain and x.bin').hidden, true);
   });
 });
 

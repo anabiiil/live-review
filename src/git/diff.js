@@ -120,6 +120,24 @@ function isInside(realRoot, real) {
 }
 
 /**
+ * Read up to `length` bytes at `position`, looping over short reads; fewer only at end of file.
+ * @param {import('node:fs/promises').FileHandle} fh
+ * @param {number} position
+ * @param {number} length
+ * @returns {Promise<Buffer>}
+ */
+async function readUpTo(fh, position, length) {
+  const buf = Buffer.alloc(Math.max(length, 0));
+  let got = 0;
+  while (got < buf.length) {
+    const { bytesRead } = await fh.read(buf, got, buf.length - got, position + got);
+    if (bytesRead === 0) break;
+    got += bytesRead;
+  }
+  return buf.subarray(0, got);
+}
+
+/**
  * Synthesize an added FileDiff for an untracked path, or null when it must not be shown.
  * Never reads content of hidden, large or non-regular files.
  * @param {string} realRoot
@@ -148,12 +166,14 @@ async function untrackedFile(realRoot, path, extraHidden) {
     try {
       const fst = await fh.stat();
       if (!fst.isFile()) return null;
-      // Sized from the stat (plus one byte to notice growth) rather than the cap, so small files stay small.
-      const buf = Buffer.alloc(st.size + 1);
-      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-      if (bytesRead > MAX_UNTRACKED_BYTES) return stubFile(path, { large: true });
-      const data = buf.subarray(0, bytesRead);
-      if (data.subarray(0, SNIFF_BYTES).includes(0)) return stubFile(path, { binary: true });
+      if (fst.size > MAX_UNTRACKED_BYTES) return stubFile(path, { large: true });
+      // Sniff the first 8 KB before reading anything else, so binaries are rejected cheaply.
+      const head = await readUpTo(fh, 0, Math.min(fst.size, SNIFF_BYTES));
+      if (head.includes(0)) return stubFile(path, { binary: true });
+      // One byte past the stat size notices a file that grew after the checks above.
+      const rest = await readUpTo(fh, head.length, Math.min(fst.size + 1, MAX_UNTRACKED_BYTES + 1) - head.length);
+      if (head.length + rest.length > MAX_UNTRACKED_BYTES) return stubFile(path, { large: true });
+      const data = Buffer.concat([head, rest]);
       return addedFile(path, mode, data.toString('utf8'));
     } finally {
       await fh.close();

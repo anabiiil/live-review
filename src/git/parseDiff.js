@@ -51,6 +51,29 @@ function cleanSidePath(p) {
 }
 
 /**
+ * Split "Binary files X and Y differ". File names may themselves contain " and ", so a side is
+ * only trusted when it is /dev/null or when both sides agree on one path (a/P and b/P).
+ * @param {string} line
+ * @returns {{old: string|null, new: string|null}|null} null when the line is ambiguous
+ */
+function parseBinaryLine(line) {
+  const m = /^Binary files (.+) differ$/.exec(line);
+  if (!m) return null;
+  const body = m[1];
+  if (body.startsWith('/dev/null and ')) return { old: null, new: cleanSidePath(body.slice('/dev/null and '.length)) };
+  if (body.endsWith(' and /dev/null')) return { old: cleanSidePath(body.slice(0, -' and /dev/null'.length)), new: null };
+  const half = (body.length - ' and '.length) / 2;
+  if (Number.isInteger(half) && body.slice(half, half + 5) === ' and ') {
+    const a = body.slice(0, half);
+    const b = body.slice(half + 5);
+    if (a.startsWith('a/') && b.startsWith('b/') && a.slice(2) === b.slice(2)) {
+      return { old: cleanSidePath(a), new: cleanSidePath(b) };
+    }
+  }
+  return null;
+}
+
+/**
  * Best effort extraction of the path from the "diff --git a/X b/X" line.
  * @param {string} line
  * @returns {string|null}
@@ -117,10 +140,10 @@ function parseSection(lines) {
         continue;
       } else if (line.startsWith('Binary files ') || line.startsWith('GIT binary patch')) {
         binary = true;
-        const m = /^Binary files (.+) and (.+) differ$/.exec(line);
-        if (m) {
-          binaryOld = cleanSidePath(m[1]);
-          binaryNew = cleanSidePath(m[2]);
+        const sides = parseBinaryLine(line);
+        if (sides) {
+          binaryOld = sides.old;
+          binaryNew = sides.new;
         }
         continue;
       } else {
@@ -165,11 +188,13 @@ function parseSection(lines) {
   else if (added) status = 'added';
   else if (deleted) status = 'deleted';
 
+  // Binary sections have no ---/+++ lines, so the diff --git header is the most reliable source.
+  const headerPath = binary ? pathFromGitHeader(lines[0]) : null;
   let path;
   if (status === 'deleted') {
-    path = oldFile ?? binaryOld ?? renameFrom;
+    path = oldFile ?? renameFrom ?? headerPath ?? binaryOld;
   } else {
-    path = newFile ?? renameTo ?? binaryNew;
+    path = newFile ?? renameTo ?? headerPath ?? binaryNew;
   }
   path = path ?? pathFromGitHeader(lines[0]) ?? '';
 

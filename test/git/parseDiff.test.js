@@ -268,3 +268,34 @@ test('CRLF content has \\r stripped from text', () => {
   const [f] = parseDiff(text);
   assert.deepEqual(f.hunks[0].lines.map((l) => l.text), ['same', 'old', 'new']);
 });
+
+test('binary file names containing " and " keep their full path', () => {
+  const name = 'foo and secret.dat';
+  const cases = [
+    { extra: [], line: `Binary files a/${name} and b/${name} differ`, status: 'modified' },
+    { extra: ['new file mode 100644'], line: `Binary files /dev/null and b/${name} differ`, status: 'added' },
+    { extra: ['deleted file mode 100644'], line: `Binary files a/${name} and /dev/null differ`, status: 'deleted' },
+  ];
+  for (const c of cases) {
+    const text = [`diff --git a/${name} b/${name}`, ...c.extra, 'index 7777777..8888888', c.line, ''].join('\n');
+    const [f] = parseDiff(text);
+    assert.equal(f.binary, true, c.status);
+    assert.equal(f.path, name, c.status);
+    assert.equal(f.status, c.status);
+  }
+});
+
+test('renamed binary with " and " in its names keeps both paths', () => {
+  const text = [
+    'diff --git a/x and y.bin b/p and q.bin',
+    'similarity index 100%',
+    'rename from x and y.bin',
+    'rename to p and q.bin',
+    'Binary files a/x and y.bin and b/p and q.bin differ',
+    '',
+  ].join('\n');
+  const [f] = parseDiff(text);
+  assert.equal(f.status, 'renamed');
+  assert.equal(f.path, 'p and q.bin');
+  assert.equal(f.oldPath, 'x and y.bin');
+});
