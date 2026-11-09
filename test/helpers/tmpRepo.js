@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { runGit } from '../../src/git/run.js';
@@ -10,7 +10,7 @@ import { runGit } from '../../src/git/run.js';
  *   commit:(msg:string)=>Promise<string>, cleanup:()=>Promise<void>}>}
  */
 export async function makeTmpRepo() {
-  const dir = await mkdtemp(join(tmpdir(), 'livereview-'));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'livereview-')));
   /** @param {...string} args */
   const git = async (...args) => (await runGit(dir, args)).stdout;
   await git('init', '-q', '-b', 'main');
