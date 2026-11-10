@@ -178,6 +178,7 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .tabs a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .spacer { flex: 1; }
 .who { color: var(--muted); max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-link { display: inline-flex; align-items: center; min-height: 32px; padding: 0 6px; font-weight: 600; }
 .offline { padding: 0 10px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-text); font-size: 12px; line-height: 22px; }
 .banners:empty { display: none; }
 .banner { padding: 8px 16px; border-bottom: 1px solid var(--border); }

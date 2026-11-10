@@ -41,7 +41,8 @@ export function createChrome(ctx, { project, tab } = {}) {
                 }
               },
             })
-          : null,
+          : // The owner reaches the admin page from the admin listener; /admin is not served on the public one.
+            h('a', { class: 'admin-link', href: '/admin', text: 'Admin' }),
       ]
     : [];
 

@@ -17,6 +17,8 @@ const TUNNEL_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+$/;
 const MAX_EMAIL = 254;
 const MAX_OWNER_NAME = 60;
+const MAX_FROM_NAME = 60;
+const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const INBOX_LIMIT = 200;
 const REPO_REASONS = new Set(['not-a-repo', 'not-root', 'forbidden']);
 const CONFIG_KEYS = new Set(['publicHost', 'resendApiKey', 'fromEmail', 'ownerName', 'ownerEmail', 'tunnelName', 'publicPort', 'adminPort']);
@@ -61,6 +63,26 @@ function checkEmail(v, field) {
 }
 
 /**
+ * The sender address: a bare address, or `Display Name <addr@domain>` (name of 1-60 printable characters
+ * without `<`, `>`, `"` or line breaks). Stored trimmed, as given.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function checkFrom(v) {
+  const s = typeof v === 'string' ? v.trim() : '';
+  const bad = () => invalid('fromEmail must be an email address, or "Display Name <address>"');
+  if (s === '' || s.length > MAX_EMAIL + MAX_FROM_NAME + 4 || CONTROL_RE.test(s)) throw bad();
+  const m = /^([^<>"]*)<([^<>\s]+)>$/.exec(s);
+  if (!m) {
+    if (s.length > MAX_EMAIL || !EMAIL_RE.test(s)) throw bad();
+    return s;
+  }
+  const name = m[1].trim();
+  if (name.length < 1 || name.length > MAX_FROM_NAME || m[2].length > MAX_EMAIL || !EMAIL_RE.test(m[2])) throw bad();
+  return s;
+}
+
+/**
  * @param {unknown} v
  * @param {string} field
  * @returns {number}
@@ -86,7 +108,7 @@ function validateConfigPatch(body, current) {
     if (!HOST_RE.test(host)) throw invalid('publicHost must be a hostname such as review.example.com');
     patch.publicHost = host;
   }
-  if ('fromEmail' in body) patch.fromEmail = checkEmail(body.fromEmail, 'fromEmail');
+  if ('fromEmail' in body) patch.fromEmail = checkFrom(body.fromEmail);
   if ('ownerEmail' in body) patch.ownerEmail = checkEmail(body.ownerEmail, 'ownerEmail');
   if ('ownerName' in body) {
     const name = typeof body.ownerName === 'string' ? body.ownerName.trim() : '';
@@ -230,7 +252,7 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
         return;
       }
       if (!ctx.viewer) unauthenticatedPage(ctx);
-      else sendHtml(ctx.res, 200, adminShell({ title: 'LiveReview admin' }));
+      else sendHtml(ctx.res, 200, adminShell({ title: 'LiveReview Admin' }));
     },
     { auth: false, page: true, ...admin },
   );

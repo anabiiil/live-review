@@ -173,6 +173,7 @@ test('GET /admin: one-time token is exchanged once, then the cookie opens the ad
   assert.equal(page.status, 200);
   assert.match(String(page.headers['content-type']), /text\/html/);
   assert.ok(page.body.includes('/static/admin.js'));
+  assert.match(page.body, /<title>LiveReview Admin<\/title>/);
   assert.ok(page.body.includes('/static/app.css'));
 
   const script = await adm('/static/admin.js', { cookie: null });
@@ -227,6 +228,13 @@ test('PUT config validates input', async () => {
     { unknownKey: 1 },
     { hasResendKey: true },
     { fromEmail: null },
+    { fromEmail: '<a@b.test>' },
+    { fromEmail: 'Name <nope>' },
+    { fromEmail: 'Na<me <a@b.test>' },
+    { fromEmail: 'Na"me <a@b.test>' },
+    { fromEmail: `${'x'.repeat(61)} <a@b.test>` },
+    { fromEmail: 'Name\r\nBcc: x@y.test <a@b.test>' },
+    { fromEmail: 'Name <a@b.test> trailing' },
   ];
   for (const body of bad) {
     const res = await adm('/api/admin/config', { method: 'PUT', body });
@@ -241,6 +249,15 @@ test('PUT config validates input', async () => {
   assert.equal(ctx.config.publicPort, 0);
 });
 
+test('PUT config accepts a display name in fromEmail and stores it trimmed as given', async () => {
+  for (const from of ['LiveReview <lr@example.test>', 'Olivia Reviews<lr@example.test>', 'lr@example.test']) {
+    const res = await adm('/api/admin/config', { method: 'PUT', body: { fromEmail: `  ${from}  ` } });
+    assert.equal(res.status, 200, res.body);
+    assert.equal(res.json().config.fromEmail, from);
+    assert.equal(ctx.config.fromEmail, from);
+  }
+});
+
 test('PUT config applies, normalizes, persists and flags port changes', async () => {
   const res = await adm('/api/admin/config', {
     method: 'PUT',
@@ -249,13 +266,13 @@ test('PUT config applies, normalizes, persists and flags port changes', async ()
   assert.equal(res.status, 200, res.body);
   const out = res.json();
   assert.equal(out.restartRequired, true);
-  assert.equal(out.config.fromEmail, 'lr2@example.test');
+  assert.equal(out.config.fromEmail, 'Lr2@Example.TEST');
   assert.equal(out.config.ownerName, 'Olivia B');
   assert.equal(out.config.tunnelName, 'my-tunnel.1');
   assert.equal(out.config.publicPort, 4400);
   assert.equal('resendApiKey' in out.config, false);
   assert.equal(out.config.hasResendKey, true);
-  assert.equal(ctx.config.fromEmail, 'lr2@example.test');
+  assert.equal(ctx.config.fromEmail, 'Lr2@Example.TEST');
   const onDisk = JSON.parse(await readFile(join(ctx.dataDir, 'config.json'), 'utf8'));
   assert.equal(onDisk.ownerName, 'Olivia B');
   assert.equal(onDisk.publicPort, 4400);
