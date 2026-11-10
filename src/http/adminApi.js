@@ -108,7 +108,11 @@ function validateConfigPatch(body, current) {
     if (!HOST_RE.test(host)) throw invalid('publicHost must be a hostname such as review.example.com');
     patch.publicHost = host;
   }
-  if ('fromEmail' in body) patch.fromEmail = checkFrom(body.fromEmail);
+  if ('fromEmail' in body) {
+    // Email is optional: an empty sender clears it.
+    const blank = typeof body.fromEmail === 'string' && body.fromEmail.trim() === '';
+    patch.fromEmail = blank ? '' : checkFrom(body.fromEmail);
+  }
   if ('ownerEmail' in body) patch.ownerEmail = checkEmail(body.ownerEmail, 'ownerEmail');
   if ('ownerName' in body) {
     const name = typeof body.ownerName === 'string' ? body.ownerName.trim() : '';

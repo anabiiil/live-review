@@ -258,6 +258,16 @@ test('PUT config accepts a display name in fromEmail and stores it trimmed as gi
   }
 });
 
+test('PUT config accepts an empty fromEmail (email is optional) and clears it', async () => {
+  for (const from of ['', '   ']) {
+    const res = await adm('/api/admin/config', { method: 'PUT', body: { fromEmail: from } });
+    assert.equal(res.status, 200, res.body);
+    assert.equal(res.json().config.fromEmail, '');
+    assert.equal(ctx.config.fromEmail, '');
+  }
+  ctx.config.fromEmail = 'lr@example.test';
+});
+
 test('PUT config applies, normalizes, persists and flags port changes', async () => {
   const res = await adm('/api/admin/config', {
     method: 'PUT',
