@@ -324,7 +324,7 @@ test('PUT config: resendApiKey omitted or empty keeps, null clears, string sets'
   const cleared = await put({ resendApiKey: null });
   assert.equal(cleared.status, 200);
   assert.equal(cleared.json().config.hasResendKey, false);
-  assert.equal(cleared.json().config.configured, false);
+  assert.equal(cleared.json().config.configured, true); // email is optional
   assert.equal(ctx.config.resendApiKey, '');
   assert.equal((await get()).hasResendKey, false);
 

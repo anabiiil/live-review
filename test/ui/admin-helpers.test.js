@@ -50,11 +50,14 @@ test('configError: names the field the server complained about', () => {
   assert.equal(configError({ data: { error: 'invalid', message: 'expected a JSON object' } }).field, null);
 });
 
-test('missingFields: key only required when none is saved', () => {
-  const full = { publicHost: 'a.b.co', ownerName: 'O', ownerEmail: 'o@x.co', fromEmail: 'f@x.co', resendApiKey: '' };
-  assert.deepEqual(missingFields(full, { hasResendKey: true }), {});
-  assert.deepEqual(missingFields(full, { hasResendKey: false }), { resendApiKey: 'Required' });
-  assert.deepEqual(Object.keys(missingFields({ ...full, publicHost: ' ', ownerName: '' }, { hasResendKey: true })).sort(), ['ownerName', 'publicHost']);
+test('missingFields: email settings optional, but key and sender go together', () => {
+  const base = { publicHost: 'a.b.co', ownerName: 'O', ownerEmail: 'o@x.co', fromEmail: '', resendApiKey: '' };
+  assert.deepEqual(missingFields(base, { hasResendKey: false }), {});
+  assert.deepEqual(missingFields({ ...base, fromEmail: 'f@x.co' }, { hasResendKey: true }), {});
+  assert.deepEqual(missingFields({ ...base, fromEmail: 'f@x.co' }, { hasResendKey: false }), { resendApiKey: 'Required when a sender address is set' });
+  assert.deepEqual(missingFields({ ...base, resendApiKey: 're_x' }, { hasResendKey: false }), { fromEmail: 'Required when a Resend key is set' });
+  assert.deepEqual(missingFields(base, { hasResendKey: true }), { fromEmail: 'Required when a Resend key is set' });
+  assert.deepEqual(Object.keys(missingFields({ ...base, publicHost: ' ', ownerName: '' }, { hasResendKey: false })).sort(), ['ownerName', 'publicHost']);
 });
 
 test('inviteStatus: sent vs failed wording', () => {

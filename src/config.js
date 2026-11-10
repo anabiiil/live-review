@@ -86,5 +86,6 @@ export function saveConfig(partial) {
  * @returns {boolean}
  */
 export function isConfigured(cfg) {
-  return Boolean(cfg.publicHost && cfg.resendApiKey && cfg.fromEmail && cfg.ownerName && cfg.ownerEmail);
+  // Email (Resend key + sender) is optional: invite links work without it.
+  return Boolean(cfg.publicHost && cfg.ownerName && cfg.ownerEmail);
 }

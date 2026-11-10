@@ -39,8 +39,9 @@ without its contents.
 - git
 - cloudflared (Cloudflare's tunnel program), installed by you
 - a domain managed by Cloudflare, for example `review.example.com`
-- a Resend account (https://resend.com) with your sending domain verified, and an API key. LiveReview emails
-  sign-in codes and invitations through it.
+- optional: a Resend account (https://resend.com) with your sending domain verified, and an API key. With it,
+  LiveReview emails sign-in codes and invitations. Without it, copy each invite link from the admin page and send
+  it yourself (WhatsApp, chat, anything); a reviewer whose session expires needs a fresh invite link.
 
 LiveReview itself has two small npm dependencies (diff2html, ws) and no native modules. It never
 downloads or installs programs.
@@ -109,7 +110,7 @@ LiveReview is running.
 
 and your browser opens the admin link. On the first run nothing is configured yet, so the second line is
 `Public: not configured yet` and the admin page walks you through the settings: public hostname, your name and
-email, the sender address and Resend API key, and the tunnel name. Then add a project (a folder that is the top
+email, the tunnel name, and (optionally) the sender address and Resend API key. Then add a project (a folder that is the top
 level of a git repository).
 
 Things to know:

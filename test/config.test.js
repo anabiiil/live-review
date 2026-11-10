@@ -123,7 +123,15 @@ test('loadConfig rejects a non-object config file', async () => {
   });
 });
 
-test('isConfigured requires all five fields', () => {
+test('isConfigured needs host and owner; email settings are optional', () => {
+  const base = { publicHost: 'h.example.com', ownerName: 'n', ownerEmail: 'o@example.com', resendApiKey: '', fromEmail: '', tunnelName: '', publicPort: 4317, adminPort: 4318 };
+  assert.equal(isConfigured(base), true);
+  for (const k of ['publicHost', 'ownerName', 'ownerEmail']) {
+    assert.equal(isConfigured({ ...base, [k]: '' }), false, k);
+  }
+});
+
+test('isConfigured with email settings filled', () => {
   const full = {
     publicHost: 'h.example.com',
     resendApiKey: 'k',
@@ -135,7 +143,7 @@ test('isConfigured requires all five fields', () => {
     adminPort: 4318,
   };
   assert.equal(isConfigured(full), true);
-  for (const k of ['publicHost', 'resendApiKey', 'fromEmail', 'ownerName', 'ownerEmail']) {
+  for (const k of ['publicHost', 'ownerName', 'ownerEmail']) {
     assert.equal(isConfigured({ ...full, [k]: '' }), false, k);
   }
 });

@@ -51,11 +51,12 @@ export function settingsView({ config, setup, onSaved }) {
     ownerName: field('f-name', 'Your name', text('ownerName', { placeholder: 'Your name', autocomplete: 'name' })),
     ownerEmail: field('f-email', 'Your email', text('ownerEmail', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email' })),
     fromEmail: field('f-from', 'Sender address', text('fromEmail', { placeholder: 'review@example.com', spellcheck: 'false' }), {
-      hint: 'Sign-in codes and invites are sent from this address. It must be on a domain you verified in Resend.',
+      hint: 'Optional. Sign-in codes and invites are sent from this address. It must be on a domain you verified in Resend.',
     }),
     resendApiKey: field(
       'f-key', 'Resend API key',
       h('input', { type: 'password', name: 'resendApiKey', autocomplete: 'off', placeholder: config.hasResendKey ? 'Saved — leave blank to keep' : 're_…' }),
+      { hint: 'Optional. Without email you can still copy each invite link and send it yourself.' },
     ),
     tunnelName: field('f-tunnel', 'Cloudflare tunnel name', text('tunnelName', { placeholder: 'livereview', spellcheck: 'false' }), {
       hint: 'Leave blank if you run the tunnel yourself.',

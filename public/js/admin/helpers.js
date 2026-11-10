@@ -91,10 +91,14 @@ export function configError(err) {
 export function missingFields(values, { hasResendKey }) {
   /** @type {Record<string,string>} */
   const out = {};
-  for (const f of ['publicHost', 'ownerName', 'ownerEmail', 'fromEmail']) {
+  for (const f of ['publicHost', 'ownerName', 'ownerEmail']) {
     if (!String(values[f] ?? '').trim()) out[f] = 'Required';
   }
-  if (!hasResendKey && !String(values.resendApiKey ?? '').trim()) out.resendApiKey = 'Required';
+  // Email is optional, but the key and the sender only work together.
+  const hasKey = hasResendKey || String(values.resendApiKey ?? '').trim() !== '';
+  const hasFrom = String(values.fromEmail ?? '').trim() !== '';
+  if (hasKey && !hasFrom) out.fromEmail = 'Required when a Resend key is set';
+  if (hasFrom && !hasKey) out.resendApiKey = 'Required when a sender address is set';
   return out;
 }
 
