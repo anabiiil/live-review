@@ -226,6 +226,18 @@ async function ignoredPaths(root, files) {
     paths.add(f.path);
     if (f.oldPath) paths.add(f.oldPath);
   }
+  return ignoredAmong(root, paths);
+}
+
+/**
+ * The given repo-relative paths that match the repository's ignore rules now, whether or not they are
+ * tracked. Read-only; throws when git fails, so callers can fail closed.
+ * @param {string} root
+ * @param {Iterable<string>} wanted
+ * @returns {Promise<Set<string>>}
+ */
+export async function ignoredAmong(root, wanted) {
+  const paths = new Set(wanted);
   if (paths.size === 0) return new Set();
   // --no-index: check the ignore rules even for paths that are in the index.
   const { stdout, code } = await runGit(root, ['check-ignore', '--no-index', '--stdin', '-z'], {

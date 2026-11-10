@@ -8,7 +8,7 @@ import { inviteEmail } from '../auth/email.js';
 import { OWNER_COOKIE } from './guards.js';
 import { unauthenticatedPage, adminShell } from './pages.js';
 import { HttpError, redirect, sendHtml, sendJson } from './router.js';
-import { listedThread, threadStatus } from './api.js';
+import { listThreads, threadStatus } from './api.js';
 
 /** @typedef {import('../config.js').Config} Config */
 /** @typedef {import('./router.js').RouteContext} RouteContext */
@@ -386,17 +386,10 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
   router.add(
     'GET',
     '/api/admin/threads',
-    ({ res, query }) => {
+    async ({ res, query }) => {
       const status = threadStatus(query);
-      /** @type {Map<number, import('../projects/store.js').Project|null>} */
-      const cache = new Map();
-      const threads = [];
-      for (const t of comments.threads({ status })) {
-        if (!cache.has(t.projectId)) cache.set(t.projectId, projects.get(t.projectId));
-        const p = cache.get(t.projectId);
-        if (p) threads.push({ ...listedThread(t), slug: p.slug, projectName: p.name });
-      }
-      sendJson(res, 200, { threads });
+      const listed = await listThreads(comments.threads({ status }), (id) => projects.get(id));
+      sendJson(res, 200, { threads: listed.map(({ listed: t, project: p }) => ({ ...t, slug: p.slug, projectName: p.name })) });
     },
     admin,
   );

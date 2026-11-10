@@ -4,7 +4,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { normalizeEmail } from '../db.js';
 import { saveConfig } from '../config.js';
 import { RepoError, SHA_RE, commitInfo, fileAt, isReachable, listCommits } from '../git/repo.js';
-import { commitDiff, liveDiff } from '../git/diff.js';
+import { commitDiff, ignoredAmong, liveDiff } from '../git/diff.js';
+import { isHidden } from '../privacy/hidden.js';
 import { SLUG_RE } from '../projects/store.js';
 import { ValidationError } from '../comments/store.js';
 import { makeAnchor } from '../comments/anchor.js';
@@ -60,14 +61,57 @@ export function threadSnippet({ anchor, line, hidden }) {
 
 /**
  * A thread as the threads listing sends it: no stored anchor, plus its location and code snippet.
+ * `concealed` drops the snippet (the file is hidden under the current rules); hidden and outdated live
+ * threads never carry one.
  * @param {import('../comments/store.js').Thread} t
+ * @param {boolean} [concealed]
  */
-export function listedThread(t) {
+export function listedThread(t, concealed = false) {
+  const stale = t.target === 'live' && t.outdated;
   return {
     ...publicComment(t),
     location: { target: t.target, path: t.path, line: t.line, side: t.side },
-    snippet: threadSnippet(t),
+    snippet: concealed || stale ? null : threadSnippet(t),
   };
+}
+
+/**
+ * Threads as the listings send them, with the hide rules applied as they are now, not as they were when
+ * the comment was written: a file that has since become git-ignored or matches the hidden list (built-in
+ * or the project's extra patterns) gets no snippet. One `git check-ignore` per project; when git fails
+ * the project's snippets are all dropped (fail closed).
+ * @template {import('../comments/store.js').Thread} T
+ * @param {T[]} threads
+ * @param {(projectId:number)=>Project|null} projectOf
+ * @returns {Promise<{thread:T, project:Project, listed:ReturnType<typeof listedThread>}[]>}
+ */
+export async function listThreads(threads, projectOf) {
+  /** @type {Map<number, {project:Project|null, paths:Set<string>, ignored:Set<string>|null}>} */
+  const byProject = new Map();
+  for (const t of threads) {
+    let entry = byProject.get(t.projectId);
+    if (!entry) byProject.set(t.projectId, (entry = { project: projectOf(t.projectId), paths: new Set(), ignored: null }));
+    if (entry.project) entry.paths.add(t.path);
+  }
+  await Promise.all(
+    [...byProject.values()].map(async (entry) => {
+      if (!entry.project || entry.paths.size === 0) return;
+      try {
+        entry.ignored = await ignoredAmong(entry.project.path, entry.paths);
+      } catch {
+        entry.ignored = null; // repository gone or git failed: no snippets
+      }
+    }),
+  );
+  /** @type {{thread:T, project:Project, listed:ReturnType<typeof listedThread>}[]} */
+  const out = [];
+  for (const t of threads) {
+    const entry = /** @type {{project:Project|null, ignored:Set<string>|null}} */ (byProject.get(t.projectId));
+    if (!entry.project) continue;
+    const concealed = entry.ignored === null || entry.ignored.has(t.path) || isHidden(t.path, entry.project.extraHidden);
+    out.push({ thread: t, project: entry.project, listed: listedThread(t, concealed) });
+  }
+  return out;
 }
 
 /**
@@ -348,10 +392,11 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
 
   // ---- comments ----------------------------------------------------------------------------
 
-  router.add('GET', '/api/p/:slug/threads', ({ res, viewer, params, query }) => {
+  router.add('GET', '/api/p/:slug/threads', async ({ res, viewer, params, query }) => {
     const p = projectFor(/** @type {Viewer} */ (viewer), params.slug);
     const status = threadStatus(query);
-    sendJson(res, 200, { threads: comments.threads({ projectId: p.id, status }).map(listedThread) });
+    const listed = await listThreads(comments.threads({ projectId: p.id, status }), (id) => (id === p.id ? p : null));
+    sendJson(res, 200, { threads: listed.map((l) => l.listed) });
   });
 
   router.add('GET', '/api/p/:slug/comments', async ({ res, viewer, params, query }) => {

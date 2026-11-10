@@ -297,3 +297,49 @@ test('threads listing: status filters, location, snippet, hidden → null, acces
   assert.equal((await adm('/api/admin/threads?status=nope')).status, 400);
   assert.equal((await pub('/api/admin/threads', { cookie: rana })).status, 404);
 });
+
+test('threads listing applies the current hide rules to snippets (gitignored later, extra patterns, outdated)', async () => {
+  const p = await newProject('Hide Later');
+  const repo = ctx.repos.at(-1);
+  await repo.write('b.js', 'alpha\nbeta\ngamma\n');
+  await repo.write('c.cfg', 'x\ny\nz\n');
+  const live = (/** @type {{method?:string, body?:unknown}} */ o) => adm(`/api/p/${p.slug}/comments`, o);
+  const on = async (/** @type {string} */ path) => {
+    const res = await live({ method: 'POST', body: { target: 'live', path, line: 2, side: 'new', body: `on ${path}` } });
+    assert.equal(res.status, 201, res.body);
+    return res.json();
+  };
+  const ignored = await on('b.js');
+  const extra = await on('c.cfg');
+  const outdated = await on('a.js');
+  const rana = await addAndSignIn(p.id, 'rana6@example.test');
+
+  /** @param {any} body @param {number} id */
+  const snippetOf = (body, id) => body.threads.find((/** @type {any} */ t) => t.id === id).snippet;
+  let pubList = (await pub(`/api/p/${p.slug}/threads?status=all`, { cookie: rana })).json();
+  for (const c of [ignored, extra, outdated]) assert.ok(Array.isArray(snippetOf(pubList, c.id)), 'visible before');
+
+  // After commenting: b.js becomes git-ignored, c.cfg matches an extra pattern stored without a wipe, and
+  // the a.js thread goes outdated.
+  await repo.write('.gitignore', 'b.js\n');
+  ctx.db.prepare('UPDATE projects SET extra_hidden = ? WHERE id = ?').run(JSON.stringify(['*.cfg']), p.id);
+  ctx.db.prepare('UPDATE comments SET outdated = 1 WHERE id = ?').run(outdated.id);
+
+  pubList = (await pub(`/api/p/${p.slug}/threads?status=all`, { cookie: rana })).json();
+  const projList = (await adm(`/api/p/${p.slug}/threads?status=all`)).json();
+  const adminList = (await adm('/api/admin/threads?status=all')).json();
+  for (const list of [pubList, projList, adminList]) {
+    for (const c of [ignored, extra, outdated]) assert.equal(snippetOf(list, c.id), null, `${c.path} snippet dropped`);
+  }
+  for (const body of [JSON.stringify(pubList), JSON.stringify(projList), JSON.stringify(adminList)]) {
+    assert.ok(!body.includes('beta') && !body.includes('"y"'), 'no stale anchor text');
+  }
+});
+
+test('threads listing drops snippets when the repository is gone (fail closed)', async () => {
+  const p = await newProject('Gone');
+  const c = await comment(p.slug, (o) => adm(`/api/p/${p.slug}/comments`, o));
+  await ctx.repos.at(-1).cleanup();
+  const list = (await adm(`/api/p/${p.slug}/threads?status=all`)).json();
+  assert.equal(list.threads.find((/** @type {any} */ t) => t.id === c.id).snippet, null);
+});
