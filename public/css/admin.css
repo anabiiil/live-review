@@ -56,7 +56,7 @@ textarea[dir="ltr"] { font: var(--fs-13) / var(--lh-code) var(--mono); }
 .pv-section > h3 + .section-sub { margin-top: calc(-1 * var(--s2)); }
 .pv-section > .section-sub { margin: 0 0 var(--s3); color: var(--ink-soft); }
 .pv-actions { margin-top: var(--s3); }
-.pv-saved { color: var(--resolved); font-size: var(--fs-13); }
+.pv-saved { color: var(--resolved-ink); font-size: var(--fs-13); }
 .pv-new { padding: var(--s5); }
 .pv-new > h2 { font-size: var(--fs-20); margin-bottom: var(--s1); }
 .pv-new > .section-sub { color: var(--ink-soft); margin-bottom: var(--s4); }
@@ -89,7 +89,7 @@ ul.files li { overflow-wrap: anywhere; }
 .invite-panel { margin: var(--s2) 0 var(--s1); padding: var(--s3); background: var(--sheet-2); border: 1px solid var(--rule); border-radius: var(--r-control); }
 .invite-panel > p { margin: 0 0 var(--s2); font-size: var(--fs-13); }
 .invite-panel > p.muted { color: var(--ink-soft); }
-.invite-ok { color: var(--resolved); }
+.invite-ok { color: var(--resolved-ink); }
 .invite-warn { padding: var(--s1) var(--s2); border-radius: 4px; background: var(--hl-wash); color: var(--ink); }
 .invite-panel > p:last-child { margin-bottom: 0; }
 .copy-field { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
@@ -115,7 +115,7 @@ ul.files li { overflow-wrap: anywhere; }
 .form-foot > * + * { margin-top: var(--s2); }
 .form-foot .form-error, .form-foot .notice { margin-top: 0; }
 .form-foot .actions { margin-top: 0; }
-.saved-note { color: var(--resolved); font-size: var(--fs-13); }
+.saved-note { color: var(--resolved-ink); font-size: var(--fs-13); }
 
 /* an on/off row that saves by itself */
 .toggle-row {

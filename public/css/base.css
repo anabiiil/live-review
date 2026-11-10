@@ -134,7 +134,8 @@ label { display: block; margin-bottom: var(--s1); font-weight: 500; }
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.resolved-chip { color: var(--resolved); border-color: var(--resolved); background: transparent; }
+.resolved-chip { color: var(--resolved-ink); border-color: var(--resolved); background: transparent; }
+.resolved-chip svg { color: var(--resolved); }
 .badge {
   display: inline-block;
   min-width: 20px;
