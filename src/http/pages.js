@@ -42,9 +42,7 @@ export function shell({ title }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/vendor/diff2html/css/diff2html.min.css">
 <link rel="stylesheet" href="/static/app.css">
-<script src="/vendor/diff2html/js/diff2html.min.js"></script>
 <script type="module" src="/static/app.js"></script>
 </head>
 <body>
