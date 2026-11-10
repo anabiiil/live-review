@@ -59,9 +59,10 @@ export function errorResponse(err) {
  * listener (the owner), both on 127.0.0.1.
  * @param {{config:Config, db:import('node:sqlite').DatabaseSync, now?:()=>number,
  *   emailSender?:{send:(m:{to:string, subject:string, text:string})=>Promise<unknown>},
- *   fetch?:typeof globalThis.fetch, watcherOptions?:{debounceMs?:number, graceMs?:number, readyTimeoutMs?:number}}} opts
+ *   fetch?:typeof globalThis.fetch, watcherOptions?:{debounceMs?:number, graceMs?:number, readyTimeoutMs?:number},
+ *   hubOptions?:{heartbeatMs?:number}}} opts
  */
-export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {} }) {
+export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {}, hubOptions = {} }) {
   const projects = createProjectStore(db);
   const comments = createCommentStore(db);
   const hasMembership = db.prepare('SELECT 1 AS x FROM members WHERE email = ? LIMIT 1');
@@ -85,7 +86,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
   /** @type {ReturnType<typeof createPipeline>} */
   let pipeline;
   const watcherPool = createWatcherPool({ ...watcherOptions, onChange: (id) => void pipeline.recompute(id) });
-  const hub = createHub({ projects, comments, watcherPool, snapshot: (id, opts) => pipeline.snapshot(id, opts) });
+  const hub = createHub({ ...hubOptions, projects, comments, watcherPool, snapshot: (id, opts) => pipeline.snapshot(id, opts) });
   pipeline = createPipeline({ projects, comments, hub });
 
   // Event listeners run inside the request that emitted them; a failure here must not fail that request.

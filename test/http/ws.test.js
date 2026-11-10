@@ -15,6 +15,7 @@ const HOST = 'review.example.test';
 const PUBLIC_ORIGIN = `https://${HOST}`;
 const OWNER_EMAIL = 'owner@example.test';
 const QUIET = 400;
+const HEARTBEAT = 100;
 
 /** @type {Awaited<ReturnType<typeof setup>>} */
 let ctx;
@@ -31,7 +32,9 @@ async function setup() {
     publicHost: HOST, resendApiKey: 're_key', fromEmail: 'lr@example.test', ownerName: 'Olivia',
     ownerEmail: OWNER_EMAIL, tunnelName: '', publicPort: 0, adminPort: 0,
   };
-  const app = createApp({ config, db, emailSender, watcherOptions: { debounceMs: 50, graceMs: 100 } });
+  const app = createApp({
+    config, db, emailSender, watcherOptions: { debounceMs: 50, graceMs: 100 }, hubOptions: { heartbeatMs: HEARTBEAT },
+  });
   const ports = await app.start();
   /** @type {Awaited<ReturnType<typeof makeTmpRepo>>[]} */
   const repos = [];
@@ -298,6 +301,29 @@ test('deleting a project revokes every subscription to it, including the owner',
   const del = await adm(`/api/admin/projects/${project.id}?confirm=${project.slug}`, { method: 'DELETE' });
   assert.equal(del.status, 200);
   await owner.waitFor((m) => m.type === 'revoked' && m.slug === project.slug);
+});
+
+test('a socket whose session ended (logout; expiry uses the same lookup) is closed with 1008 at the next heartbeat', async () => {
+  const { project } = await newProject('Logout');
+  const cookie = await addAndSignIn(project.id, 'logout@example.com');
+  const ws = await connect('public', { cookie });
+  ws.send({ type: 'subscribe', slug: project.slug });
+  await ws.waitFor((m) => m.type === 'live');
+  const other = await connect('public', { cookie: await addAndSignIn(project.id, 'stays@example.com') });
+  assert.equal((await pub('/api/logout', { method: 'POST', cookie })).status, 200);
+  assert.equal(await Promise.race([ws.closed, sleep(HEARTBEAT * 10).then(() => 'open')]), 1008);
+  await sleep(HEARTBEAT * 3);
+  assert.equal(other.ws.readyState, WebSocket.OPEN, 'other sessions are untouched');
+
+  // An owner socket whose owner session is gone is closed too.
+  const owner = await connect('admin');
+  const isOwnerSession = ctx.app.services.owner.isOwnerSession;
+  ctx.app.services.owner.isOwnerSession = () => false;
+  try {
+    assert.equal(await Promise.race([owner.closed, sleep(HEARTBEAT * 10).then(() => 'open')]), 1008);
+  } finally {
+    ctx.app.services.owner.isOwnerSession = isOwnerSession;
+  }
 });
 
 test('unsubscribe and close release the watcher reference', async () => {

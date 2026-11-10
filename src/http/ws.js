@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import { normalizeEmail } from '../db.js';
 import { SLUG_RE } from '../projects/store.js';
-import { hostAllowed, originAllowed, resolveViewer } from './guards.js';
+import { hostAllowed, originAllowed, resolveViewer, sessionCheck } from './guards.js';
 
 /** @typedef {import('../types.js').Viewer} Viewer */
 /** @typedef {import('./guards.js').Listener} Listener */
@@ -11,7 +11,11 @@ import { hostAllowed, originAllowed, resolveViewer } from './guards.js';
  * `acquired` while it holds a watcher reference.
  * @typedef {{projectId:number, slug:string, ready:boolean, acquired:boolean}} Subscription
  */
-/** @typedef {{ws:WebSocket, viewer:Viewer, kind:'public'|'admin', alive:boolean, subs:Map<number, Subscription>}} Client */
+/**
+ * `signedIn` re-checks the session the socket was opened with.
+ * @typedef {{ws:WebSocket, viewer:Viewer, kind:'public'|'admin', alive:boolean, subs:Map<number, Subscription>,
+ *   signedIn:()=>boolean}} Client
+ */
 /**
  * @typedef {{projectId:number, target:string, commentId:number,
  *   kind:'create'|'reply'|'edit'|'resolve'|'delete', byOwner:boolean}} CommentChange
@@ -37,6 +41,12 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
 
   const heartbeat = setInterval(() => {
     for (const c of clients) {
+      if (!c.signedIn()) {
+        // Signed out or expired: the socket must not outlive the session.
+        dropClient(c);
+        c.ws.close(1008, 'signed-out');
+        continue;
+      }
       if (!c.alive) {
         c.ws.terminate();
         continue;
@@ -71,6 +81,15 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
       sub.acquired = false;
       watcherPool.release(projectId);
     }
+  }
+
+  /**
+   * Forget a client and give back its watcher references.
+   * @param {Client} c
+   */
+  function dropClient(c) {
+    clients.delete(c);
+    for (const id of [...c.subs.keys()]) removeSub(c, id);
   }
 
   /**
@@ -147,20 +166,18 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
    * @param {WebSocket} ws
    * @param {Viewer} viewer
    * @param {'public'|'admin'} kind
+   * @param {()=>boolean} signedIn
    */
-  function onConnection(ws, viewer, kind) {
+  function onConnection(ws, viewer, kind, signedIn) {
     /** @type {Client} */
-    const c = { ws, viewer, kind, alive: true, subs: new Map() };
+    const c = { ws, viewer, kind, alive: true, subs: new Map(), signedIn };
     clients.add(c);
     ws.on('pong', () => {
       c.alive = true;
     });
     ws.on('message', (data) => onMessage(c, data));
     ws.on('error', () => ws.terminate());
-    ws.on('close', () => {
-      clients.delete(c);
-      for (const id of [...c.subs.keys()]) removeSub(c, id);
-    });
+    ws.on('close', () => dropClient(c));
   }
 
   /**
@@ -197,7 +214,8 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
       if (!originAllowed(req, listener)) return reject(403);
       const viewer = resolveViewer(req, listener);
       if (!viewer) return reject(401);
-      wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, viewer, listener.kind));
+      const signedIn = sessionCheck(req, listener);
+      wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, viewer, listener.kind, signedIn));
     },
 
     broadcast,
@@ -265,8 +283,7 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
     close() {
       clearInterval(heartbeat);
       for (const c of [...clients]) {
-        clients.delete(c);
-        for (const id of [...c.subs.keys()]) removeSub(c, id);
+        dropClient(c);
         c.ws.terminate();
       }
       wss.close();

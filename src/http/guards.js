@@ -86,6 +86,23 @@ export function resolveViewer(req, listener) {
   return { kind: 'reviewer', email: session.email, name: listener.userName(session.email) };
 }
 
+/**
+ * A check that the session behind this request is still live (not signed out, not expired), for
+ * long-lived connections. Only the cookie token is kept, not the request.
+ * @param {Req} req
+ * @param {Listener} listener
+ * @returns {() => boolean}
+ */
+export function sessionCheck(req, listener) {
+  const cookies = parseCookies(req.headers.cookie);
+  if (listener.kind === 'admin') {
+    const token = cookies[OWNER_COOKIE] ?? '';
+    return () => listener.owner.isOwnerSession(token);
+  }
+  const token = cookies[SESSION_COOKIE] ?? '';
+  return () => listener.sessions.lookup(token, listener.now()) !== null;
+}
+
 /** @param {string} token */
 export const sessionCookie = (token) =>
   `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE}`;
