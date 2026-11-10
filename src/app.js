@@ -22,9 +22,23 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
-  'Content-Security-Policy':
-    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
 };
+
+/**
+ * The listener's Content-Security-Policy. `connect-src` names the WebSocket origin explicitly, since not every
+ * browser lets 'self' cover ws:/wss:.
+ * @param {Listener} listener
+ */
+function contentSecurityPolicy(listener) {
+  const host = listener.config.publicHost;
+  const sockets =
+    listener.kind === 'admin'
+      ? ` ws://localhost:${listener.port} ws://127.0.0.1:${listener.port}`
+      : host
+        ? ` wss://${host}`
+        : '';
+  return `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'${sockets}; frame-ancestors 'none'`;
+}
 
 /** @param {string} pathname */
 const isAdminPath = (pathname) =>
@@ -139,6 +153,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
   async function handle(req, res, listener) {
     const started = performance.now();
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    res.setHeader('Content-Security-Policy', contentSecurityPolicy(listener));
     try {
       const raw = req.url ?? '/';
       if (!raw.startsWith('/')) throw new HttpError(400, 'invalid');

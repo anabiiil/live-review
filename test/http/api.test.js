@@ -406,7 +406,14 @@ test('responses carry security headers', async () => {
   assert.equal(res.headers['referrer-policy'], 'no-referrer');
   assert.equal(res.headers['x-frame-options'], 'DENY');
   assert.match(String(res.headers['content-security-policy']), /default-src 'self'/);
+  assert.match(String(res.headers['content-security-policy']), new RegExp(`connect-src 'self' wss://${HOST.replaceAll('.', '\\.')};`));
   assert.equal(res.headers['cache-control'], 'no-store');
+  const a = ctx.ports.adminPort;
+  const admin = await request(a, { path: '/login', headers: { Host: `127.0.0.1:${a}` } });
+  assert.match(
+    String(admin.headers['content-security-policy']),
+    new RegExp(`connect-src 'self' ws://localhost:${a} ws://127\\.0\\.0\\.1:${a};`),
+  );
 });
 
 test('request body limits and JSON validation', async () => {
