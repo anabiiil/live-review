@@ -264,10 +264,11 @@ table.diff td.num .n { display: block; }
 table.diff td.num .addc {
   position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; padding: 0;
   border: 0; border-radius: 4px; background: var(--accent); color: var(--accent-ink);
-  font: 700 14px/18px var(--mono); cursor: pointer; opacity: 0;
+  font: 700 14px/18px var(--mono); cursor: pointer; opacity: .28;
 }
 tr.line:hover .addc, td.num .addc:focus-visible { opacity: 1; }
-@media (hover: none) { table.diff td.num .addc { display: none; } }
+@media (hover: none) { table.diff td.num .addc { opacity: .85; } }
+.comment-hint { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 table.diff td.code { padding: 0 8px 0 calc(8px + 2ch); white-space: pre; }
 table.diff td.code::before { content: attr(data-m); display: inline-block; width: 2ch; margin-left: -2ch; color: var(--muted); }
 table.diff td.code.add { background: var(--add-bg); }

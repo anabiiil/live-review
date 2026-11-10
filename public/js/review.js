@@ -167,7 +167,11 @@ export function createReview({ slug, target, root, me }) {
 
     const main = h('div', { class: 'review-main' });
     if (truncated) main.append(h('p', { class: 'notice', text: 'Showing the first 300 new files' }));
-    if (!files.length) main.append(h('p', { class: 'empty', text: target === 'live' ? 'No uncommitted changes.' : 'This commit changes no files.' }));
+    if (!files.length) {
+      main.append(h('p', { class: 'empty', text: target === 'live' ? 'No uncommitted changes right now. This page updates by itself when files change; to comment on earlier work, open Commits.' : 'This commit changes no files.' }));
+    } else {
+      main.append(h('p', { class: 'comment-hint', text: 'To comment, click a line number (or the + next to it). Comments show under that line for everyone on this project.' }));
+    }
     main.append(...fileEls);
     if (unplaced.length) main.append(section('unplaced', 'Comments on lines not shown in this diff', unplaced, (t) => [location_(t), renderThread(t, env)], true));
 
