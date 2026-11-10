@@ -32,7 +32,7 @@ test('openDb twice on the same file does not error and keeps data', async () => 
     a.close();
     const b = openDb(file);
     assert.equal(b.prepare('SELECT COUNT(*) AS c FROM projects').get().c, 1);
-    assert.equal(b.prepare('PRAGMA user_version').get().user_version, 1);
+    assert.equal(b.prepare('PRAGMA user_version').get().user_version, 2);
     b.close();
   });
 });
@@ -122,6 +122,39 @@ test('expected indexes exist', async () => {
     assert.ok(idx('code_requests').includes('email,at'));
     assert.ok(idx('code_requests').includes('ip,at'));
     assert.ok(idx('invites').includes('project_id,email'));
+    db.close();
+  });
+});
+
+test('migration v2 upgrades a v1 database: notifications table, users.email_notifications default 1', async () => {
+  await withDir(async (dir) => {
+    const file = join(dir, 'v1.db');
+    const { DatabaseSync } = await import('node:sqlite');
+    const old = new DatabaseSync(file);
+    // Only the v1 tables this test needs, at user_version 1.
+    old.exec(`CREATE TABLE projects(id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL, path TEXT UNIQUE NOT NULL,
+      extra_hidden TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL);
+      CREATE TABLE users(email TEXT PRIMARY KEY, name TEXT);
+      CREATE TABLE comments(id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        parent_id INTEGER, target TEXT, path TEXT, line INTEGER, side TEXT, anchor TEXT, author_email TEXT NOT NULL,
+        body TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, resolved INTEGER NOT NULL DEFAULT 0,
+        outdated INTEGER NOT NULL DEFAULT 0, rewritten INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO users(email, name) VALUES('a@b.c', 'A');
+      PRAGMA user_version = 1;`);
+    old.close();
+    const db = openDb(file);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.equal(db.prepare("SELECT email_notifications AS n FROM users WHERE email = 'a@b.c'").get().n, 1);
+    db.prepare("INSERT INTO projects(slug,name,path,created_at) VALUES('s','n','/p',1)").run();
+    db.prepare("INSERT INTO comments(project_id,author_email,body,created_at,updated_at) VALUES(1,'a@b.c','x',1,1)").run();
+    db.prepare("INSERT INTO notifications(recipient_email,project_id,comment_id,kind,actor_email,created_at) VALUES('r@x',1,1,'reply','a@b.c',1)").run();
+    assert.throws(() =>
+      db.prepare("INSERT INTO notifications(recipient_email,project_id,comment_id,kind,actor_email,created_at) VALUES('r@x',1,1,'nope','a@b.c',1)").run(),
+    );
+    db.prepare('DELETE FROM comments WHERE id = 1').run();
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM notifications').get().c, 0, 'deleting the thread deletes its notifications');
+    const idx = db.prepare('PRAGMA index_list(notifications)').all().map((r) => r.name);
+    assert.ok(idx.includes('notifications_recipient_created'));
     db.close();
   });
 });

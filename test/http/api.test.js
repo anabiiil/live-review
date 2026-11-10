@@ -132,7 +132,7 @@ test('opening an invite link only shows a page; its form POST signs in once', as
   const setCookie = res.headers['set-cookie']?.[0] ?? '';
   assert.match(setCookie, /^lr_session=[A-Za-z0-9_-]{43}; HttpOnly; Secure; SameSite=Lax; Path=\/; Max-Age=2592000$/);
   const me = await pub('/api/me', { cookie: `lr_session=${res.cookies.lr_session}` });
-  assert.deepEqual(me.json(), { email: 'alice@example.com', name: null, kind: 'reviewer' });
+  assert.deepEqual(me.json(), { email: 'alice@example.com', name: null, kind: 'reviewer', emailNotifications: true });
 
   const again = await pub(`/invite/${token}`, { method: 'POST' });
   assert.equal(again.status, 410);

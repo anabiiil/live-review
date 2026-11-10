@@ -17,8 +17,9 @@ import { hostAllowed, originAllowed, resolveViewer, sessionCheck } from './guard
  *   signedIn:()=>boolean}} Client
  */
 /**
+ * `actorEmail` is who made the change; `resolved` (resolve only) is the new state.
  * @typedef {{projectId:number, target:string, commentId:number,
- *   kind:'create'|'reply'|'edit'|'resolve'|'delete', byOwner:boolean}} CommentChange
+ *   kind:'create'|'reply'|'edit'|'resolve'|'delete', byOwner:boolean, actorEmail?:string, resolved?:boolean}} CommentChange
  */
 
 const MAX_PAYLOAD = 4096;
@@ -227,6 +228,24 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
     },
 
     broadcast,
+
+    /**
+     * Send `msg` to every owner socket (admin listener).
+     * @param {object} msg
+     */
+    sendToOwner(msg) {
+      for (const c of clients) if (c.kind === 'admin') send(c, msg);
+    },
+
+    /**
+     * Send `msg` to every reviewer socket (public listener) signed in as `email`.
+     * @param {string} email
+     * @param {object} msg
+     */
+    sendToEmail(email, msg) {
+      const e = normalizeEmail(email);
+      for (const c of clients) if (c.kind === 'public' && normalizeEmail(c.viewer.email) === e) send(c, msg);
+    },
 
     /**
      * A comment was created, replied to, edited, resolved or deleted: tell the project's subscribers to

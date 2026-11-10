@@ -8,6 +8,7 @@ import { inviteEmail } from '../auth/email.js';
 import { OWNER_COOKIE } from './guards.js';
 import { unauthenticatedPage, adminShell } from './pages.js';
 import { HttpError, redirect, sendHtml, sendJson } from './router.js';
+import { listedThread, threadStatus } from './api.js';
 
 /** @typedef {import('../config.js').Config} Config */
 /** @typedef {import('./router.js').RouteContext} RouteContext */
@@ -376,6 +377,26 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
       projects.removeMember(p.id, email);
       afterMemberLeft(p.id, email);
       sendJson(res, 200, { ok: true });
+    },
+    admin,
+  );
+
+  // ---- threads -----------------------------------------------------------------------------
+
+  router.add(
+    'GET',
+    '/api/admin/threads',
+    ({ res, query }) => {
+      const status = threadStatus(query);
+      /** @type {Map<number, import('../projects/store.js').Project|null>} */
+      const cache = new Map();
+      const threads = [];
+      for (const t of comments.threads({ status })) {
+        if (!cache.has(t.projectId)) cache.set(t.projectId, projects.get(t.projectId));
+        const p = cache.get(t.projectId);
+        if (p) threads.push({ ...listedThread(t), slug: p.slug, projectName: p.name });
+      }
+      sendJson(res, 200, { threads });
     },
     admin,
   );

@@ -5,7 +5,8 @@ import { randomBytes } from 'node:crypto';
 
 /**
  * @typedef {{publicHost:string, resendApiKey:string, fromEmail:string, ownerName:string,
- *   ownerEmail:string, tunnelName:string, publicPort:number, adminPort:number}} Config
+ *   ownerEmail:string, tunnelName:string, publicPort:number, adminPort:number,
+ *   ownerEmailNotifications:boolean}} Config
  */
 
 /** @returns {Config} */
@@ -18,6 +19,7 @@ const defaults = () => ({
   tunnelName: '',
   publicPort: 4317,
   adminPort: 4318,
+  ownerEmailNotifications: true,
 });
 
 /** @returns {string} Absolute path of the LiveReview data directory. */

@@ -66,6 +66,7 @@ test('loadConfig on an empty dir returns defaults', async () => {
       tunnelName: '',
       publicPort: 4317,
       adminPort: 4318,
+      ownerEmailNotifications: true,
     });
   });
 });

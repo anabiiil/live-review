@@ -2,6 +2,7 @@ import { lstat, readFile, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { normalizeEmail } from '../db.js';
+import { saveConfig } from '../config.js';
 import { RepoError, SHA_RE, commitInfo, fileAt, isReachable, listCommits } from '../git/repo.js';
 import { commitDiff, liveDiff } from '../git/diff.js';
 import { SLUG_RE } from '../projects/store.js';
@@ -22,6 +23,10 @@ const LOGIN_PAD_MS = 800;
 const COMMITS_PER_PAGE = 20;
 const MAX_PAGE = 10000;
 const MAX_NAME = 60;
+const NOTIFICATIONS_DEFAULT = 30;
+const NOTIFICATIONS_MAX = 100;
+const MAX_READ_IDS = 500;
+const STATUSES = new Set(['open', 'resolved', 'all']);
 
 const noAccess = () => new HttpError(404, 'no-access');
 const notFound = () => new HttpError(404, 'not-found');
@@ -35,6 +40,45 @@ function publicComment(c) {
   const { anchor, ...rest } = c;
   if (rest.replies) rest.replies = rest.replies.map(publicComment);
   return rest;
+}
+
+/**
+ * The stored anchor as numbered lines around the comment's line (the line itself is `focus`). Null when the
+ * file is hidden or there is no anchor.
+ * @param {{anchor:import('../types.js').Anchor|null, line:number|null, hidden:boolean}} c
+ * @returns {{no:number, text:string, focus:boolean}[]|null}
+ */
+export function threadSnippet({ anchor, line, hidden }) {
+  if (hidden || !anchor || line === null) return null;
+  const first = line - anchor.before.length;
+  return [
+    ...anchor.before.map((text, i) => ({ no: first + i, text, focus: false })),
+    { no: line, text: anchor.lineText, focus: true },
+    ...anchor.after.map((text, i) => ({ no: line + 1 + i, text, focus: false })),
+  ];
+}
+
+/**
+ * A thread as the threads listing sends it: no stored anchor, plus its location and code snippet.
+ * @param {import('../comments/store.js').Thread} t
+ */
+export function listedThread(t) {
+  return {
+    ...publicComment(t),
+    location: { target: t.target, path: t.path, line: t.line, side: t.side },
+    snippet: threadSnippet(t),
+  };
+}
+
+/**
+ * The `status` query of the threads listings; open by default.
+ * @param {URLSearchParams} query
+ * @returns {'open'|'resolved'|'all'}
+ */
+export function threadStatus(query) {
+  const s = query.get('status') ?? 'open';
+  if (!STATUSES.has(s)) throw new ValidationError('status must be open, resolved or all');
+  return /** @type {'open'|'resolved'|'all'} */ (s);
 }
 
 /**
@@ -87,9 +131,10 @@ function positiveId(v) {
  *   comments:ReturnType<typeof import('../comments/store.js').createCommentStore>,
  *   codes:ReturnType<typeof import('../auth/codes.js').createCodeService>,
  *   sessions:ReturnType<typeof import('../auth/sessions.js').createSessionService>,
- *   events:import('node:events').EventEmitter}} deps
+ *   events:import('node:events').EventEmitter,
+ *   notifier:ReturnType<typeof import('../notify/notifier.js').createNotifier>}} deps
  */
-export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions, events }) {
+export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions, events, notifier }) {
   const upsertName = db.prepare(
     'INSERT INTO users(email, name) VALUES(?, ?) ON CONFLICT(email) DO UPDATE SET name = excluded.name',
   );
@@ -104,13 +149,17 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
   };
 
   /**
-   * Tell the live hub (refetch hints, owner notifications) about a successful comment change.
+   * Tell the live hub (refetch hints) and the notifier about a successful comment change.
    * @param {Viewer} viewer
-   * @param {{projectId:number, target:string, id:number}} c
+   * @param {{projectId:number, target:string, id:number, resolved:boolean}} c the comment after the change
    * @param {'create'|'reply'|'edit'|'resolve'|'delete'} kind
    */
   const commentChanged = (viewer, c, kind) =>
-    events.emit('comment-changed', { projectId: c.projectId, target: c.target, commentId: c.id, kind, byOwner: viewer.kind === 'owner' });
+    events.emit('comment-changed', {
+      projectId: c.projectId, target: c.target, commentId: c.id, kind, byOwner: viewer.kind === 'owner',
+      actorEmail: viewer.kind === 'owner' ? normalizeEmail(config.ownerEmail ?? '') : normalizeEmail(viewer.email),
+      ...(kind === 'resolve' ? { resolved: c.resolved } : {}),
+    });
 
   /**
    * The project behind a slug if the viewer may see it; unknown and forbidden are indistinguishable.
@@ -218,7 +267,42 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
 
   router.add('GET', '/api/me', ({ res, viewer }) => {
     const v = /** @type {Viewer} */ (viewer);
-    sendJson(res, 200, { email: v.email, name: v.name, kind: v.kind });
+    sendJson(res, 200, { email: v.email, name: v.name, kind: v.kind, emailNotifications: notifier.emailPreference(v.email) });
+  });
+
+  router.add('PUT', '/api/me/prefs', ({ res, viewer, body }) => {
+    const v = /** @type {Viewer} */ (viewer);
+    const on = body?.emailNotifications;
+    if (typeof on !== 'boolean') throw new ValidationError('emailNotifications must be true or false');
+    if (v.kind === 'owner') {
+      saveConfig({ ownerEmailNotifications: on });
+      config.ownerEmailNotifications = on;
+    } else {
+      notifier.setReviewerEmailPreference(v.email, on);
+    }
+    sendJson(res, 200, { emailNotifications: notifier.emailPreference(v.email) });
+  });
+
+  // ---- notifications -----------------------------------------------------------------------
+
+  router.add('GET', '/api/notifications', ({ res, viewer, query }) => {
+    const asked = Number.parseInt(query.get('limit') ?? '', 10);
+    const limit = Number.isFinite(asked) ? Math.min(NOTIFICATIONS_MAX, Math.max(1, asked)) : NOTIFICATIONS_DEFAULT;
+    sendJson(res, 200, notifier.list(/** @type {Viewer} */ (viewer), limit));
+  });
+
+  router.add('POST', '/api/notifications/read', ({ res, viewer, body }) => {
+    const { ids, all } = body ?? {};
+    if (all !== undefined && all !== true) throw new ValidationError('all must be true');
+    if (all === undefined) {
+      const ok =
+        Array.isArray(ids) &&
+        ids.length <= MAX_READ_IDS &&
+        ids.every((/** @type {unknown} */ id) => Number.isSafeInteger(id) && /** @type {number} */ (id) > 0);
+      if (!ok) throw new ValidationError(`ids must be a list of up to ${MAX_READ_IDS} notification ids, or all must be true`);
+    }
+    const unread = notifier.markRead(/** @type {Viewer} */ (viewer), all ? { all: true } : { ids });
+    sendJson(res, 200, { unread });
   });
 
   router.add('POST', '/api/me/name', ({ res, viewer, body }) => {
@@ -263,6 +347,12 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
   });
 
   // ---- comments ----------------------------------------------------------------------------
+
+  router.add('GET', '/api/p/:slug/threads', ({ res, viewer, params, query }) => {
+    const p = projectFor(/** @type {Viewer} */ (viewer), params.slug);
+    const status = threadStatus(query);
+    sendJson(res, 200, { threads: comments.threads({ projectId: p.id, status }).map(listedThread) });
+  });
 
   router.add('GET', '/api/p/:slug/comments', async ({ res, viewer, params, query }) => {
     const p = projectFor(/** @type {Viewer} */ (viewer), params.slug);
@@ -346,9 +436,12 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     if (resolved !== undefined && typeof resolved !== 'boolean') throw new ValidationError('resolved must be true or false');
     if (resolved !== undefined && c.parentId !== null) throw new ValidationError('only top-level comments can be resolved');
     // edit is the stricter permission (author only), so a combined change cannot half-apply.
+    const wasResolved = c.resolved;
     if (text !== undefined) c = comments.edit(c.id, v, text, now());
     if (resolved !== undefined) c = comments.setResolved(c.id, v, resolved);
-    commentChanged(v, c, text !== undefined ? 'edit' : 'resolve');
+    if (text !== undefined) commentChanged(v, c, 'edit');
+    // Only a real change of state notifies anyone.
+    if (resolved !== undefined && resolved !== wasResolved) commentChanged(v, c, 'resolve');
     sendJson(res, 200, publicComment(c));
   });
 

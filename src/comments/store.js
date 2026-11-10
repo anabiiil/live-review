@@ -299,6 +299,35 @@ export function createCommentStore(db) {
     },
 
     /**
+     * Top-level threads for the threads listing, newest first, across every target (live, commits, outdated,
+     * rewritten and hidden ones alike). `projectId` null lists every project.
+     * @param {{projectId?:number|null, status?:'open'|'resolved'|'all'}} [opts]
+     * @returns {Thread[]}
+     */
+    threads({ projectId = null, status = 'all' } = {}) {
+      const where = ['c.parent_id IS NULL'];
+      /** @type {number[]} */
+      const args = [];
+      if (projectId !== null) where.push('c.project_id = ?'), args.push(projectId);
+      if (status === 'open') where.push('c.resolved = 0');
+      else if (status === 'resolved') where.push('c.resolved = 1');
+      const rows = db.prepare(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY c.created_at DESC, c.id DESC`).all(...args);
+      return withReplies(rows.map(toComment));
+    },
+
+    /**
+     * Everyone who wrote in a thread (the top-level author first, then repliers in order), deduplicated.
+     * @param {number} rootId
+     * @returns {string[]}
+     */
+    participants(rootId) {
+      const rows = db
+        .prepare('SELECT author_email AS email FROM comments WHERE id = ? OR parent_id = ? ORDER BY parent_id IS NOT NULL, created_at, id')
+        .all(rootId, rootId);
+      return [...new Set(rows.map((r) => String(r.email)))];
+    },
+
+    /**
      * Top-level live comments that are not outdated.
      * @param {number} projectId
      * @returns {Comment[]}

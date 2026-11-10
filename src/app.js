@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { createOwnerMailer } from './notify/ownerMailer.js';
+import { createNotifier } from './notify/notifier.js';
+import { createNotificationStore } from './notify/notificationStore.js';
 import { createServer } from 'node:http';
 import { createProjectStore, StoreError } from './projects/store.js';
 import { createCommentStore, ForbiddenError, NotFoundError, ValidationError } from './comments/store.js';
@@ -77,9 +78,9 @@ export function errorResponse(err) {
  * @param {{config:Config, db:import('node:sqlite').DatabaseSync, now?:()=>number,
  *   emailSender?:{send:(m:{to:string, subject:string, text:string})=>Promise<unknown>},
  *   fetch?:typeof globalThis.fetch, watcherOptions?:{debounceMs?:number, graceMs?:number, readyTimeoutMs?:number},
- *   hubOptions?:{heartbeatMs?:number}, ownerMailDelayMs?:number}} opts
+ *   hubOptions?:{heartbeatMs?:number}, notifyDelayMs?:number}} opts
  */
-export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {}, hubOptions = {}, ownerMailDelayMs }) {
+export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {}, hubOptions = {}, notifyDelayMs }) {
   const projects = createProjectStore(db);
   const comments = createCommentStore(db);
   const hasMembership = db.prepare('SELECT 1 AS x FROM members WHERE email = ? LIMIT 1');
@@ -131,18 +132,23 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
     // The last live state still names the old slug.
     void pipeline.recompute(e.projectId);
   });
-  // Reviewer comments also go to the owner by email (batched), so they arrive with the admin page closed.
-  const ownerMailer = createOwnerMailer({
+  // Comments, replies and resolves notify the people concerned: stored, pushed live, and emailed (batched),
+  // so they arrive with the page closed.
+  const notifier = createNotifier({
+    db,
     config,
     sender,
-    getComment: (id) => comments.get(id),
-    getProject: (id) => projects.get(id),
+    comments,
+    projects,
+    store: createNotificationStore(db),
+    deliver: { toOwner: (msg) => hub.sendToOwner(msg), toReviewer: (email, msg) => hub.sendToEmail(email, msg) },
     adminPort: () => adminListener.port,
-    ...(ownerMailDelayMs !== undefined ? { delayMs: ownerMailDelayMs } : {}),
+    now,
+    ...(notifyDelayMs !== undefined ? { delayMs: notifyDelayMs } : {}),
   });
   on('comment-changed', (/** @type {import('./http/ws.js').CommentChange} */ e) => {
     hub.commentChanged(e);
-    ownerMailer.notify(e);
+    notifier.handle(e);
   });
 
   /** @type {{projects:typeof projects, comments:typeof comments, codes:typeof codes, sessions:typeof sessions,
@@ -150,7 +156,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
   const services = { projects, comments, codes, sessions, owner, pipeline, hub, watcherPool };
 
   const router = createRouter();
-  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions, events });
+  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions, events, notifier });
   registerAdminApi(router, {
     config, db, now, emailSender: sender, projects, comments, sessions, owner, events,
     boundPorts: () => ({ publicPort: publicListener.port, adminPort: adminListener.port }),
@@ -256,7 +262,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
 
     /** @returns {Promise<void>} */
     async stop() {
-      await ownerMailer.close();
+      await notifier.close();
       hub.close();
       await pipeline.close();
       await watcherPool.closeAll();

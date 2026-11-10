@@ -41,8 +41,20 @@ CREATE INDEX code_requests_ip_at ON code_requests(ip, at);
 CREATE INDEX invites_project_email ON invites(project_id, email);
 `;
 
+// v2: persisted notifications (thread root in comment_id) and the reviewer's email-notification preference.
+const SCHEMA_V2 = `
+CREATE TABLE notifications(
+  id INTEGER PRIMARY KEY, recipient_email TEXT NOT NULL,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('comment','reply','resolved','reopened')), actor_email TEXT NOT NULL,
+  created_at INTEGER NOT NULL, read_at INTEGER);
+CREATE INDEX notifications_recipient_created ON notifications(recipient_email, created_at DESC);
+ALTER TABLE users ADD COLUMN email_notifications INTEGER NOT NULL DEFAULT 1;
+`;
+
 /** Ordered migrations; migrations[i] upgrades user_version i to i+1. Append new ones at the end. */
-const MIGRATIONS = [SCHEMA_V1];
+const MIGRATIONS = [SCHEMA_V1, SCHEMA_V2];
 
 /**
  * Open (creating if needed) the LiveReview database and bring the schema up to date.

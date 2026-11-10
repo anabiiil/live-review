@@ -135,7 +135,7 @@ test('servers: admin listener checks Host/Origin and requires the owner cookie',
   const owner = live.app.services.owner;
   const cookie = `lr_owner=${owner.exchange(owner.issueOneTime())}`;
   const me = await request(a, { path: '/api/me', headers: { Host: `localhost:${a}`, Cookie: cookie } });
-  assert.deepEqual(me.json(), { email: 'owner@example.test', name: 'Olivia', kind: 'owner' });
+  assert.deepEqual(me.json(), { email: 'owner@example.test', name: 'Olivia', kind: 'owner', emailNotifications: true });
   const shell = await request(a, { path: '/', headers: { Host: host, Cookie: cookie } });
   assert.equal(shell.status, 200);
   assert.match(shell.body, /<div id="app"><\/div>/);
