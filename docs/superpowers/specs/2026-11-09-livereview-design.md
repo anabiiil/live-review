@@ -54,7 +54,7 @@ Reviewers never need to clone, pull, install, or run anything. They can never ch
 - **Node.js 24 LTS**, plain JavaScript (ES modules) or TypeScript compiled with `tsc`. No bundling into a single executable.
 - **Storage:** Node's built-in `node:sqlite` — one database file in the app's data dir. `engines` pins Node `>=24`. The app checks the version at startup and exits with a clear message if it is too old, and suppresses the `ExperimentalWarning` for `node:sqlite` only. No native npm modules (avoids per-OS compilation and unsigned `.node` binaries).
 - **Git access:** by spawning the system `git` CLI (already installed on the owner's machine). No libgit2 bindings.
-- **File watching:** `chokidar` (pure JS).
+- **File watching:** Node's built-in `fs.watch` — one recursive watcher per project root plus the git dir (changed from chokidar after the final review: chokidar 4 opened one file descriptor per tracked file).
 - **Realtime:** WebSocket (`ws`).
 - **Diff rendering:** `diff2html` in the browser; side-by-side and unified toggle.
 - **HTTP:** a small framework (Fastify or Hono) or `node:http` — builder's choice.
@@ -89,7 +89,7 @@ Reviewers never need to clone, pull, install, or run anything. They can never ch
 | One commit | `/{slug}/commit/{sha}` |
 | Deep link to a comment | any of the above + `#c-{commentId}` |
 | Sign-in | `/login` |
-| Personal invite link | `/invite/{token}` |
+| Personal invite link (GET shows Continue, POST redeems) | `/invite/{token}` |
 | Admin (owner only) | `/admin` |
 
 A signed-in reviewer opening a project they are not a member of gets a plain "no access" page that does not reveal whether the project exists.
@@ -112,7 +112,7 @@ A signed-in reviewer opening a project they are not a member of gets a plain "no
 
 ### 7.5 What is never shown
 
-- Any path git ignores (`git check-ignore`) — never listed, never diffed.
+- Any path git ignores — never listed, never diffed in the live view. This includes files that are tracked but now match `.gitignore` (checked with `git check-ignore --no-index`).
 - Additionally, always hidden even if tracked (default list, designer's call, broadened after review): `.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.keystore`, `*.jks`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials*.json`, `*secret*`, `*.kdbx`, `auth.json` (Composer). The diff shows "hidden file changed" with no content. Owner can extend this list per project.
 - The hide rules (gitignore for the live view; the hidden list everywhere) apply **everywhere content can appear**: live diff, commit diffs including old commits, file lists, and comment anchors. Old commits are filtered by the **current** hidden list, so a secret committed long ago in a file that is now on the list stays hidden. Gitignore is not applied to history (a path ignored now may have been legitimately tracked before); only the hidden list is.
 - Comments cannot be placed on hidden or binary files. If the owner later adds a pattern to the hidden list, existing comments on matching files have their stored anchor text wiped and show "file hidden".
@@ -151,7 +151,7 @@ A signed-in reviewer opening a project they are not a member of gets a plain "no
 - **Owner identity:** the owner's name and email are set in config. The owner is one identity everywhere; if the owner's email is also on a member list it maps to the same person. In the owner's own browser the owner uses the admin listener, which also renders the same project/diff/comment pages.
 - **Comment permissions:** anyone can edit or delete their own comments. The owner can resolve or delete any comment. The author can resolve their own comments.
 - **Invite:** owner adds an email to a project in admin → an email goes out with the site link and the project name.
-- **Invite link (owner request, added 2026-11-09):** every invitation also has a personal invite link (`/invite/{token}`) that the admin page always shows with a copy button, so the owner can send it over WhatsApp or anywhere, whether or not the email worked. The token is bound to that email, random (32 bytes), stored hashed, single-use, and valid 7 days. Opening it signs that reviewer in directly (first-time name prompt), with no email code needed. The owner can regenerate it, which invalidates the previous one. Removing the member invalidates it. Later sign-ins after the session expires use the email code, or a fresh invite link from the owner. Removing an email from a project revokes access immediately, including closing that reviewer's open WebSocket for that project.
+- **Invite link (owner request, added 2026-11-09):** every invitation also has a personal invite link (`/invite/{token}`) that the admin page always shows with a copy button, so the owner can send it over WhatsApp or anywhere, whether or not the email worked. The token is bound to that email, random (32 bytes), stored hashed, single-use, and valid 7 days. Opening it shows a "Continue" page; pressing Continue (a POST) signs that reviewer in directly (first-time name prompt), with no email code needed. The GET never consumes the token, so link previews in WhatsApp/Slack/mail scanners can't burn it. The owner can regenerate it, which invalidates the previous one. Removing the member invalidates it. Later sign-ins after the session expires use the email code, or a fresh invite link from the owner. Removing an email from a project revokes access immediately, including closing that reviewer's open WebSocket for that project.
 
 ### 7.9 Running it
 
