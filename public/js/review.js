@@ -4,7 +4,7 @@ import { api, getComments } from './api.js';
 import { createUiState, renderThread } from './comments.js';
 import { renderFile } from './diff.js';
 import { h, setChildren, storage } from './dom.js';
-import { threadsByKey } from './pairing.js';
+import { flashOffset, threadForComment, threadsByKey } from './pairing.js';
 import { commentIdFromHash } from './route.js';
 
 /** @typedef {import('../../src/types.js').FileDiff} FileDiff */
@@ -39,6 +39,10 @@ export function createReview({ slug, target, root, me }) {
   /** Scroll to the `#c-id` thread on the next render, and keep doing so until the reader scrolls. */
   let hashPinned = false;
   let lastHash = '';
+  /** The hash whose thread was already opened (once: after that the reader may close it again). */
+  let revealedHash = '';
+  /** @type {{id:number, at:number}|null} the deep-link flash in progress */
+  let flash = null;
 
   const api0 = `/api/p/${encodeURIComponent(slug)}`;
 
@@ -49,6 +53,7 @@ export function createReview({ slug, target, root, me }) {
   NARROW.addEventListener('change', onNarrow);
   const onHash = () => {
     lastHash = '';
+    revealedHash = '';
     render();
   };
   window.addEventListener('wheel', unpin, { passive: true });
@@ -99,33 +104,51 @@ export function createReview({ slug, target, root, me }) {
       }
       ui.pendingFocus = null;
     }
+    ui.opening.clear();
     applyHash();
   }
 
-  /** Highlight the thread named by the URL hash; scroll to it on load and while the reader has not scrolled. */
+  /**
+   * Scroll to the comment named by the URL hash on load and while the reader has not scrolled, and flash it
+   * once. Re-renders during the flash resume it where it was.
+   */
   function applyHash() {
     const id = commentIdFromHash(location.hash);
-    for (const el of root.querySelectorAll('.highlight')) el.classList.remove('highlight');
     if (id === null) return;
-    const el = root.querySelector(`#c-${id}`);
+    const el = /** @type {HTMLElement|null} */ (root.querySelector(`#c-${id}`));
     if (!el) return;
-    el.classList.add('highlight');
-    if (location.hash !== lastHash || hashPinned) {
+    if (location.hash !== lastHash) {
       lastHash = location.hash;
+      flash = { id, at: Date.now() };
       el.scrollIntoView({ block: 'center' });
       hashPinned = true;
-    }
+    } else if (hashPinned) el.scrollIntoView({ block: 'center' });
+    const offset = flash && flash.id === id ? flashOffset(flash.at, Date.now()) : null;
+    if (offset === null) return;
+    el.style.animationDelay = `-${offset}ms`;
+    el.classList.add('flash');
   }
 
-  /** Make sure the hash target is visible: expand its resolved thread and open its section. */
+  /**
+   * Make sure the hash target is visible, once per hash: open its thread (and its file, large diff, resolved
+   * summary or section).
+   */
   function revealHash() {
     const id = commentIdFromHash(location.hash);
-    if (id === null) return;
-    for (const [section, list] of /** @type {[string, any[]][]} */ ([['outdated', comments.outdated], ['rewritten', comments.rewritten]])) {
-      if (list.some((t) => t.id === id || t.replies.some((/** @type {any} */ r) => r.id === id))) ui.openSections.add(section);
+    if (id === null || location.hash === revealedHash) return;
+    const t = threadForComment([...comments.threads, ...comments.outdated, ...comments.rewritten], id);
+    if (!t) return;
+    revealedHash = location.hash;
+    if (comments.outdated.includes(t)) ui.openSections.add('outdated');
+    if (comments.rewritten.includes(t)) ui.openSections.add('rewritten');
+    ui.expandedResolved.add(t.id);
+    if (!ui.openThreads.has(t.id)) {
+      ui.openThreads.add(t.id);
+      ui.opening.add(t.id);
     }
-    for (const t of [...comments.threads, ...comments.outdated, ...comments.rewritten]) {
-      if (t.id === id || t.replies.some((/** @type {any} */ r) => r.id === id)) ui.expandedResolved.add(t.id);
+    if (comments.threads.includes(t)) {
+      ui.collapsedFiles.delete(t.path);
+      ui.expandedFiles.add(t.path);
     }
   }
 
@@ -135,9 +158,14 @@ export function createReview({ slug, target, root, me }) {
     const byKey = threadsByKey(visible);
     /** @type {Map<string, number>} */
     const openByPath = new Map();
-    for (const t of visible) if (!t.resolved) openByPath.set(t.path, (openByPath.get(t.path) ?? 0) + 1);
+    /** @type {Map<string, any[]>} */
+    const byPath = new Map();
+    for (const t of visible) {
+      if (!t.resolved) openByPath.set(t.path, (openByPath.get(t.path) ?? 0) + 1);
+      if (t.side && t.line !== null) byPath.set(t.path, [...(byPath.get(t.path) ?? []), t]);
+    }
     const narrow = NARROW.matches;
-    const diffEnv = { comments: env, mode: narrow ? 'unified' : ui.mode, byKey, placed: new Set(), openByPath };
+    const diffEnv = { comments: env, mode: narrow ? 'unified' : ui.mode, byKey, byPath, placed: new Set(), openByPath };
 
     const fileEls = files.map((f) => renderFile(f, diffEnv));
 
@@ -170,7 +198,9 @@ export function createReview({ slug, target, root, me }) {
     if (!files.length) {
       main.append(h('p', { class: 'empty', text: target === 'live' ? 'No uncommitted changes right now. This page updates by itself when files change; to comment on earlier work, open Commits.' : 'This commit changes no files.' }));
     } else {
-      main.append(h('p', { class: 'comment-hint', text: 'To comment, click a line number (or the + next to it). Comments show under that line for everyone on this project.' }));
+      main.append(
+        h('p', { class: 'comment-hint', text: 'To comment, click a line number or the + beside it. Lines with comments carry a mark in the right margin; click it to open the conversation.' }),
+      );
     }
     main.append(...fileEls);
     if (unplaced.length) main.append(section('unplaced', 'Comments on lines not shown in this diff', unplaced, (t) => [location_(t), renderThread(t, env)], true));
@@ -262,7 +292,7 @@ export function createReview({ slug, target, root, me }) {
               slash >= 0 ? h('span', { class: 'dir', text: f.path.slice(0, slash + 1) }) : null,
               h('span', { class: 'base', text: f.path.slice(slash + 1) }),
             ),
-            open ? h('span', { class: 'chip open-chip', title: 'Open comments', text: String(open) }) : null,
+            open ? h('span', { class: 'mark-count', title: open === 1 ? '1 open comment' : `${open} open comments`, text: String(open) }) : null,
           ),
         ),
       );

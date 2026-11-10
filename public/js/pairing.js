@@ -106,3 +106,74 @@ export function maxLineLength(f) {
   for (const h of f.hunks) for (const l of h.lines) if (l.text.length > max) max = l.text.length;
   return max;
 }
+
+/** How long the deep-link flash runs (ms); kept in step with the `flash` animation in diff.css. */
+export const FLASH_MS = 1600;
+
+/**
+ * What a margin mark (or a file header count) shows for a set of threads.
+ * @param {{id:number, resolved:boolean, replies:any[]}[]} threads
+ * @returns {{ids:number[], comments:number, open:number, resolved:boolean}} resolved: every thread is resolved
+ */
+export function markSummary(threads) {
+  let comments = 0;
+  let open = 0;
+  for (const t of threads) {
+    comments += 1 + t.replies.length;
+    if (!t.resolved) open++;
+  }
+  return { ids: threads.map((t) => t.id), comments, open, resolved: threads.length > 0 && open === 0 };
+}
+
+/** @param {number} n */
+export const commentCount = (n) => (n === 1 ? '1 comment' : `${n} comments`);
+
+/**
+ * Accessible name of a margin mark.
+ * @param {{comments:number, resolved:boolean}} s
+ * @param {number} line
+ * @param {boolean} expanded
+ */
+export function markLabel(s, line, expanded) {
+  const what = s.resolved ? (s.comments === 1 ? '1 resolved comment' : `${s.comments} resolved comments`) : commentCount(s.comments);
+  return `${expanded ? 'Hide' : 'Show'} ${what} on line ${line}`;
+}
+
+/**
+ * Toggle a group of threads: open them all when any is closed, else close them all.
+ * @param {Set<number>} open
+ * @param {number[]} ids
+ * @returns {boolean} whether the group is now open
+ */
+export function toggleThreads(open, ids) {
+  if (!ids.length) return false;
+  const allOpen = ids.every((id) => open.has(id));
+  for (const id of ids) {
+    if (allOpen) open.delete(id);
+    else open.add(id);
+  }
+  return !allOpen;
+}
+
+/**
+ * The thread holding comment `id` (the top-level comment or one of its replies).
+ * @template {{id:number, replies:{id:number}[]}} T
+ * @param {T[]} threads
+ * @param {number} id
+ * @returns {T|null}
+ */
+export function threadForComment(threads, id) {
+  return threads.find((t) => t.id === id || t.replies.some((r) => r.id === id)) ?? null;
+}
+
+/**
+ * How far into the deep-link flash we are, so a re-render can resume it instead of restarting or dropping it.
+ * @param {number|null} startedAt
+ * @param {number} now
+ * @returns {number|null} elapsed ms, or null when there is no flash running
+ */
+export function flashOffset(startedAt, now) {
+  if (startedAt === null) return null;
+  const elapsed = now - startedAt;
+  return elapsed >= 0 && elapsed < FLASH_MS ? elapsed : null;
+}

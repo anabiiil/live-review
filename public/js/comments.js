@@ -1,6 +1,8 @@
 // Comment threads and composers. All text reaches the DOM through text nodes / textContent.
 import { h } from './dom.js';
 import { parseBody, relativeTime } from './format.js';
+import { icon } from './icons.js';
+import { initials } from './shell-model.js';
 
 export const MAX_BODY = 5000;
 
@@ -16,7 +18,9 @@ export const MAX_BODY = 5000;
  * @property {Map<string,string>} errors last submit error by composer key
  * @property {Set<string>} expandedFiles large diffs the reader chose to show
  * @property {Set<string>} collapsedFiles files the reader folded
- * @property {Set<number>} expandedResolved resolved threads shown in full
+ * @property {Set<number>} expandedResolved resolved threads shown in full (in the sections below the diff)
+ * @property {Set<number>} openThreads diff threads the reader opened from their margin mark
+ * @property {Set<number>} opening threads opened since the last render (they animate in once)
  * @property {Set<string>} openSections open collapsible sections
  * @property {string|null} pendingFocus draft key to focus after the next render (a composer was just opened)
  * @property {boolean|null} sidebarOpen
@@ -26,7 +30,8 @@ export const MAX_BODY = 5000;
 export function createUiState(mode) {
   return {
     mode, composers: new Map(), replying: new Set(), editing: new Set(), drafts: new Map(), busy: new Set(), errors: new Map(),
-    expandedFiles: new Set(), collapsedFiles: new Set(), expandedResolved: new Set(), openSections: new Set(),
+    expandedFiles: new Set(), collapsedFiles: new Set(), expandedResolved: new Set(), openThreads: new Set(), opening: new Set(),
+    openSections: new Set(),
     pendingFocus: null, sidebarOpen: null,
   };
 }
@@ -38,7 +43,7 @@ export function createUiState(mode) {
  * @property {UiState} ui
  * @property {() => void} rerender re-render from local state
  * @property {() => Promise<void>} refresh refetch comments, then re-render
- * @property {(path:string, side:'old'|'new', line:number, body:string) => Promise<void>} createComment
+ * @property {(path:string, side:'old'|'new', line:number, body:string) => Promise<{id:number}>} createComment
  * @property {(id:number, body:string) => Promise<void>} reply
  * @property {(id:number, body:string) => Promise<void>} edit
  * @property {(id:number) => Promise<void>} remove
@@ -119,7 +124,7 @@ export function renderComposer(env, { key, initial = '', label, placeholder, onS
   ta.disabled = busy;
   const error = h('p', { class: 'form-error', role: 'alert', text: errorMessage });
   const submit = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'button', text: busy ? 'Saving…' : label }));
-  const cancel = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn', type: 'button', text: 'Cancel' }));
+  const cancel = /** @type {HTMLButtonElement} */ (h('button', { class: 'link', type: 'button', text: 'Cancel' }));
   cancel.disabled = busy;
   const sync = () => {
     submit.disabled = busy || ta.value.trim() === '';
@@ -157,7 +162,13 @@ export function renderComposer(env, { key, initial = '', label, placeholder, onS
     discardDraft(ui, key);
     onCancel();
   });
-  return h('div', { class: 'composer' }, ta, error, h('div', { class: 'composer-actions' }, submit, cancel));
+  return h(
+    'div',
+    { class: `composer${ui.pendingFocus === key ? ' opening' : ''}` },
+    ta,
+    error,
+    h('div', { class: 'composer-actions' }, submit, cancel, h('span', { class: 'composer-hint', text: 'Ctrl+Enter to send' })),
+  );
 }
 
 /**
@@ -168,6 +179,15 @@ export function renderComposer(env, { key, initial = '', label, placeholder, onS
 const isMine = (env, c) => c.authorEmail.toLowerCase() === env.me.email.toLowerCase();
 
 /**
+ * A quiet text button.
+ * @param {string} text
+ * @param {(e:Event)=>void} onclick
+ * @param {string} [extra]
+ */
+const action = (text, onclick, extra = '') => h('button', { class: `link${extra ? ` ${extra}` : ''}`, type: 'button', text, onclick });
+
+/**
+ * One comment: avatar initials, name, relative time, body, then quiet actions.
  * @param {any} c
  * @param {CommentEnv} env
  * @param {{top:boolean, thread:any}} o
@@ -182,16 +202,22 @@ function renderComment(c, env, { top, thread }) {
     { class: 'comment-head' },
     h('strong', { class: 'author', dir: 'auto', text: c.authorName || c.authorEmail }),
     h('time', { datetime: new Date(c.createdAt).toISOString(), title: new Date(c.createdAt).toLocaleString(), text: relativeTime(c.createdAt) }),
-    edited ? h('span', { class: 'muted', text: '(edited)' }) : null,
+    edited ? h('span', { class: 'edited', text: 'edited' }) : null,
   );
-  const root = h('div', { class: 'comment', id: top ? null : `c-${c.id}` }, head);
+  const main = h('div', { class: 'comment-main' }, head);
+  const root = h(
+    'div',
+    { class: 'comment', id: top ? null : `c-${c.id}` },
+    h('span', { class: 'avatar', 'aria-hidden': 'true', dir: 'auto', text: initials(c.authorName, c.authorEmail) }),
+    main,
+  );
 
   if (ui.editing.has(c.id)) {
     const stop = () => {
       ui.editing.delete(c.id);
       env.rerender();
     };
-    root.append(
+    main.append(
       renderComposer(env, {
         key: `edit:${c.id}`, initial: c.body, label: 'Save', placeholder: 'Edit your comment',
         onSubmit: async (text) => {
@@ -205,37 +231,47 @@ function renderComment(c, env, { top, thread }) {
     return root;
   }
 
-  root.append(renderBody(c.body));
+  main.append(renderBody(c.body));
   const actions = h('div', { class: 'comment-actions' });
   if (top) {
     actions.append(
-      h('button', {
-        class: 'link', type: 'button', text: 'Reply',
-        onclick: () => {
-          ui.replying.add(thread.id);
-          ui.pendingFocus = `reply:${thread.id}`;
-          env.rerender();
-        },
+      action('Reply', () => {
+        ui.replying.add(thread.id);
+        ui.pendingFocus = `reply:${thread.id}`;
+        env.rerender();
+      }),
+    );
+  }
+  if (top && (mine || owner)) {
+    actions.append(
+      action(thread.resolved ? 'Reopen' : 'Resolve', async (e) => {
+        const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
+        btn.disabled = true;
+        try {
+          await env.setResolved(thread.id, !thread.resolved);
+          ui.expandedResolved.delete(thread.id);
+          await env.refresh();
+        } catch (err) {
+          btn.disabled = false;
+          alert(errorText(/** @type {any} */ (err)));
+        }
       }),
     );
   }
   if (mine) {
     actions.append(
-      h('button', {
-        class: 'link', type: 'button', text: 'Edit',
-        onclick: () => {
-          ui.editing.add(c.id);
-          ui.pendingFocus = `edit:${c.id}`;
-          env.rerender();
-        },
+      action('Edit', () => {
+        ui.editing.add(c.id);
+        ui.pendingFocus = `edit:${c.id}`;
+        env.rerender();
       }),
     );
   }
   if (mine || owner) {
     actions.append(
-      h('button', {
-        class: 'link danger', type: 'button', text: 'Delete',
-        onclick: async () => {
+      action(
+        'Delete',
+        async () => {
           if (!confirm(top && thread.replies.length ? 'Delete this comment and its replies?' : 'Delete this comment?')) return;
           try {
             await env.remove(c.id);
@@ -244,43 +280,31 @@ function renderComment(c, env, { top, thread }) {
             alert(errorText(/** @type {any} */ (err)));
           }
         },
-      }),
+        'danger',
+      ),
     );
   }
-  if (top && (mine || owner)) {
-    actions.append(
-      h('button', {
-        class: 'link', type: 'button', text: thread.resolved ? 'Unresolve' : 'Resolve',
-        onclick: async (/** @type {Event} */ e) => {
-          const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
-          btn.disabled = true;
-          try {
-            await env.setResolved(thread.id, !thread.resolved);
-            ui.expandedResolved.delete(thread.id);
-            await env.refresh();
-          } catch (err) {
-            btn.disabled = false;
-            alert(errorText(/** @type {any} */ (err)));
-          }
-        },
-      }),
-    );
-  }
-  if (actions.childNodes.length) root.append(actions);
+  if (actions.childNodes.length) main.append(actions);
   return root;
 }
 
 /**
- * A thread: its comment, replies, reply box. Resolved threads start collapsed.
+ * A thread: its comment, replies, reply box.
+ * Inline threads (in the diff) are opened and closed by their margin mark, so they always render in full;
+ * threads listed in the sections below the diff keep a resolved thread folded to one line until asked.
  * @param {any} t top-level comment with `replies`
  * @param {CommentEnv} env
+ * @param {{inline?:boolean}} [o]
  * @returns {HTMLElement}
  */
-export function renderThread(t, env) {
+export function renderThread(t, env, { inline = false } = {}) {
   const { ui } = env;
-  const root = h('div', { class: `thread${t.resolved ? ' resolved' : ''}`, id: `c-${t.id}` });
+  const cls = ['thread'];
+  if (t.resolved) cls.push('resolved');
+  if (inline && ui.opening.has(t.id)) cls.push('opening');
+  const root = h('div', { class: cls.join(' '), id: `c-${t.id}` });
 
-  if (t.resolved && !ui.expandedResolved.has(t.id)) {
+  if (!inline && t.resolved && !ui.expandedResolved.has(t.id)) {
     const first = String(t.body).split('\n', 1)[0].slice(0, 90);
     root.append(
       h(
@@ -292,7 +316,7 @@ export function renderThread(t, env) {
             env.rerender();
           },
         },
-        h('span', { class: 'chip resolved-chip', text: 'Resolved' }),
+        h('span', { class: 'resolved-label' }, icon('check', { size: 14 }), 'Resolved'),
         h('span', { class: 'author', dir: 'auto', text: t.authorName || t.authorEmail }),
         h('span', { class: 'excerpt', dir: 'auto', text: first }),
         h('span', { class: 'muted', text: 'Show' }),
@@ -306,14 +330,13 @@ export function renderThread(t, env) {
       h(
         'div',
         { class: 'thread-bar' },
-        h('span', { class: 'chip resolved-chip', text: 'Resolved' }),
-        h('button', {
-          class: 'link', type: 'button', text: 'Hide',
-          onclick: () => {
-            ui.expandedResolved.delete(t.id);
-            env.rerender();
-          },
-        }),
+        h('span', { class: 'resolved-label' }, icon('check', { size: 14 }), 'Resolved'),
+        inline
+          ? null
+          : action('Hide', () => {
+              ui.expandedResolved.delete(t.id);
+              env.rerender();
+            }),
       ),
     );
   }
