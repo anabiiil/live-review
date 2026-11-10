@@ -61,8 +61,10 @@ export function createReview({ slug, target, root, me }) {
     me,
     ui,
     rerender: () => render(),
+    // Always render: the caller just changed `ui` (closed a composer) and a live-update refetch may
+    // already have delivered the same comments.
     refresh: async () => {
-      await refreshComments();
+      setComments(await getComments(slug, target), true);
     },
     createComment: (path, side, line, body) => api('POST', `${api0}/comments`, { target, path, line, side, body }),
     reply: (id, body) => api('POST', `/api/comments/${id}/replies`, { body }),
@@ -269,10 +271,13 @@ export function createReview({ slug, target, root, me }) {
     setComments(await getComments(slug, target));
   }
 
-  /** @param {CommentSet} c */
-  function setComments(c) {
+  /**
+   * @param {CommentSet} c
+   * @param {boolean} [force] render even when the comments did not change
+   */
+  function setComments(c, force = false) {
     const json = JSON.stringify(c);
-    if (json === commentsJson) return;
+    if (json === commentsJson && !force) return;
     commentsJson = json;
     comments = c;
     render();

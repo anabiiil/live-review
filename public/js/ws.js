@@ -14,6 +14,8 @@ export function createSocket() {
   /** @type {ReturnType<typeof setTimeout>|null} */
   let timer = null;
   let stopped = false;
+  /** The connection dropped and has not come back. */
+  let lost = false;
   /** @type {Set<string>} */
   const slugs = new Set();
   /** @type {Set<(e:SocketEvent)=>void>} */
@@ -36,11 +38,13 @@ export function createSocket() {
   };
 
   function connect() {
+    timer = null;
     if (stopped) return;
     const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
     const sock = new WebSocket(url);
     ws = sock;
     sock.addEventListener('open', () => {
+      lost = false;
       delay = MIN_DELAY;
       for (const slug of slugs) send({ type: 'subscribe', slug });
       emit({ type: 'open' });
@@ -53,10 +57,13 @@ export function createSocket() {
         /* ignore malformed frames */
       }
     });
-    sock.addEventListener('close', () => {
+    sock.addEventListener('close', (ev) => {
       if (ws !== sock) return;
       ws = null;
-      emit({ type: 'close' });
+      lost = true;
+      // 1008: the server ended our access; reconnecting would only be refused again.
+      if (ev.code === 1008) stopped = true;
+      emit({ type: 'close', code: ev.code });
       if (stopped) return;
       timer = setTimeout(connect, delay);
       delay = Math.min(MAX_DELAY, delay * 2);
@@ -88,11 +95,16 @@ export function createSocket() {
       handlers.add(fn);
       return () => handlers.delete(fn);
     },
+    /** Connection lost and a reconnect is pending. */
+    get offline() {
+      return lost && !stopped;
+    },
     get online() {
       return ws !== null && ws.readyState === WebSocket.OPEN;
     },
     stop() {
       stopped = true;
+      lost = false;
       if (timer) clearTimeout(timer);
       timer = null;
       ws?.close();

@@ -14,7 +14,11 @@ export function h(tag, props, ...children) {
     if (v === null || v === undefined || v === false) continue;
     if (k === 'class') el.className = v;
     else if (k === 'text') el.textContent = v;
-    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k.startsWith('on')) {
+      // Never let an on* attribute through as markup.
+      if (typeof v !== 'function') throw new TypeError(`${k} must be a function`);
+      el.addEventListener(k.slice(2), v);
+    }
     else if (k === 'value') /** @type {any} */ (el).value = v;
     else el.setAttribute(k, v === true ? '' : String(v));
   }

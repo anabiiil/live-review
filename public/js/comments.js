@@ -13,6 +13,7 @@ export const MAX_BODY = 5000;
  * @property {Set<number>} editing comment ids being edited
  * @property {Map<string,string>} drafts composer text by key (new line key, `reply:{id}`, `edit:{id}`)
  * @property {Set<string>} busy composer keys with a request in flight
+ * @property {Map<string,string>} errors last submit error by composer key
  * @property {Set<string>} expandedFiles large diffs the reader chose to show
  * @property {Set<string>} collapsedFiles files the reader folded
  * @property {Set<number>} expandedResolved resolved threads shown in full
@@ -24,7 +25,7 @@ export const MAX_BODY = 5000;
 /** @param {'split'|'unified'} mode @returns {UiState} */
 export function createUiState(mode) {
   return {
-    mode, composers: new Map(), replying: new Set(), editing: new Set(), drafts: new Map(), busy: new Set(),
+    mode, composers: new Map(), replying: new Set(), editing: new Set(), drafts: new Map(), busy: new Set(), errors: new Map(),
     expandedFiles: new Set(), collapsedFiles: new Set(), expandedResolved: new Set(), openSections: new Set(),
     pendingFocus: null, sidebarOpen: null,
   };
@@ -43,6 +44,44 @@ export function createUiState(mode) {
  * @property {(id:number) => Promise<void>} remove
  * @property {(id:number, resolved:boolean) => Promise<void>} setResolved
  */
+
+/**
+ * What a composer shows, derived from the UI state so a re-render in the middle of a request keeps it.
+ * @param {UiState} ui
+ * @param {string} key
+ * @param {string} [initial]
+ * @returns {{busy:boolean, error:string, text:string}}
+ */
+export function composerState(ui, key, initial = '') {
+  return { busy: ui.busy.has(key), error: ui.errors.get(key) ?? '', text: ui.drafts.get(key) ?? initial };
+}
+
+/** A submit starts: keep the text, mark busy, forget the previous error. */
+export function beginSubmit(/** @type {UiState} */ ui, /** @type {string} */ key, /** @type {string} */ text) {
+  ui.drafts.set(key, text);
+  ui.busy.add(key);
+  ui.errors.delete(key);
+}
+
+/** The request succeeded: the draft is spent. */
+export function finishSubmit(/** @type {UiState} */ ui, /** @type {string} */ key) {
+  ui.busy.delete(key);
+  ui.errors.delete(key);
+  ui.drafts.delete(key);
+}
+
+/** The request failed: keep the text, show the error. */
+export function failSubmit(/** @type {UiState} */ ui, /** @type {string} */ key, /** @type {string} */ message) {
+  ui.busy.delete(key);
+  ui.errors.set(key, message);
+}
+
+/** The composer was cancelled. */
+export function discardDraft(/** @type {UiState} */ ui, /** @type {string} */ key) {
+  ui.drafts.delete(key);
+  ui.errors.delete(key);
+  ui.busy.delete(key);
+}
 
 /**
  * @param {string} text
@@ -72,13 +111,13 @@ function errorText(err) {
  */
 export function renderComposer(env, { key, initial = '', label, placeholder, onSubmit, onCancel }) {
   const { ui } = env;
-  const busy = ui.busy.has(key);
+  const { busy, error: errorMessage, text } = composerState(ui, key, initial);
   const ta = /** @type {HTMLTextAreaElement} */ (
     h('textarea', { rows: 3, dir: 'auto', 'data-draft': key, placeholder, 'aria-label': placeholder, maxlength: MAX_BODY })
   );
-  ta.value = ui.drafts.get(key) ?? initial;
+  ta.value = text;
   ta.disabled = busy;
-  const error = h('p', { class: 'form-error', role: 'alert' });
+  const error = h('p', { class: 'form-error', role: 'alert', text: errorMessage });
   const submit = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'button', text: busy ? 'Saving…' : label }));
   const cancel = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn', type: 'button', text: 'Cancel' }));
   cancel.disabled = busy;
@@ -87,24 +126,20 @@ export function renderComposer(env, { key, initial = '', label, placeholder, onS
   };
   sync();
 
+  // Busy and error live in `ui`, so a live re-render in the middle of the request rebuilds the same state.
   async function send() {
-    const text = ta.value.trim();
-    if (!text || ui.busy.has(key)) return;
-    ui.busy.add(key);
-    ta.disabled = submit.disabled = cancel.disabled = true;
-    error.textContent = '';
+    const value = ta.value.trim();
+    if (!value || ui.busy.has(key)) return;
+    beginSubmit(ui, key, ta.value);
+    env.rerender();
     try {
-      await onSubmit(text);
-      ui.drafts.delete(key);
+      await onSubmit(value);
+      finishSubmit(ui, key);
     } catch (err) {
-      error.textContent = errorText(/** @type {any} */ (err));
-      ta.disabled = cancel.disabled = false;
-    } finally {
-      ui.busy.delete(key);
-      sync();
-      submit.textContent = label;
-      if (!ta.disabled) submit.disabled = ta.value.trim() === '';
+      failSubmit(ui, key, errorText(/** @type {any} */ (err)));
+      ui.pendingFocus = key;
     }
+    env.rerender();
   }
 
   ta.addEventListener('input', () => {
@@ -119,7 +154,7 @@ export function renderComposer(env, { key, initial = '', label, placeholder, onS
   });
   submit.addEventListener('click', send);
   cancel.addEventListener('click', () => {
-    ui.drafts.delete(key);
+    discardDraft(ui, key);
     onCancel();
   });
   return h('div', { class: 'composer' }, ta, error, h('div', { class: 'composer-actions' }, submit, cancel));

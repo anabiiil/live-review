@@ -69,11 +69,20 @@ export function commitsBody({ ctx, chrome, project }) {
   }
 
   more.addEventListener('click', () => load(loaded + 1, loaded + 1, false));
+  /** Reload the pages shown so far; false when a load is already running. */
+  const reload = () => {
+    if (busy || loaded === 0) return false;
+    load(1, loaded, true);
+    return true;
+  };
   chrome.listen((e) => {
+    // Commits may have landed while the socket was down.
+    if (e.type === 'open') reload();
     if (e.type !== 'live') return;
     chrome.setHead(e.head);
     const sha = e.head?.sha ?? null;
-    if (headSha !== undefined && sha !== headSha && loaded > 0) load(1, loaded, true);
+    // A skipped reload must not count as seen: the next message retries.
+    if (headSha !== undefined && sha !== headSha && loaded > 0 && !reload()) return;
     headSha = sha;
   });
   ctx.socket.subscribe(project.slug);

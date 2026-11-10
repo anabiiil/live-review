@@ -20,7 +20,8 @@ export function createChrome(ctx, { project, tab } = {}) {
   const cleanups = [];
 
   const branch = h('span', { class: 'branch', hidden: '' });
-  const offline = h('span', { class: 'offline', role: 'status', hidden: '', text: 'Offline, reconnecting…' });
+  const offline = h('span', { class: 'offline', role: 'status', text: 'Offline, reconnecting…' });
+  offline.hidden = !ctx.socket.offline;
   const banners = h('div', { class: 'banners' });
   const main = h('main', { id: 'main' });
 
