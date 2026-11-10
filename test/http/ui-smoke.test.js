@@ -79,6 +79,39 @@ test('every page route returns the app shell', async () => {
   assert.ok(login.body.includes('<div id="app">'));
 });
 
+test('/admin with the owner cookie returns the admin shell; without it, the terminal hint', async () => {
+  const base = `127.0.0.1:${ctx.ports.adminPort}`;
+  const exchange = await request(ctx.ports.adminPort, { path: `/admin?t=${ctx.app.services.owner.issueOneTime()}`, headers: { Host: base } });
+  const cookie = `lr_owner=${exchange.cookies.lr_owner}`;
+  const page = await request(ctx.ports.adminPort, { path: '/admin', headers: { Host: base, Cookie: cookie } });
+  assert.equal(page.status, 200);
+  assert.match(String(page.headers['content-type']), /^text\/html/);
+  assert.ok(page.body.includes('<div id="app">'));
+  assert.ok(page.body.includes('src="/static/admin.js"'));
+  assert.ok(page.body.includes('href="/static/app.css"'));
+  assert.ok(page.body.includes('href="/static/admin.css"'));
+  assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/.test(page.body), 'no inline scripts');
+  const anon = await request(ctx.ports.adminPort, { path: '/admin', headers: { Host: base } });
+  assert.equal(anon.status, 401);
+  assert.ok(!anon.body.includes('admin.js'));
+});
+
+test('admin modules and stylesheet are served from the admin listener and parse', async () => {
+  const base = `127.0.0.1:${ctx.ports.adminPort}`;
+  const files = (await listJs(PUBLIC_DIR)).filter((f) => f === 'admin.js' || f.startsWith('js/admin/'));
+  assert.ok(files.length >= 7, files.join(','));
+  for (const file of files) {
+    const res = await request(ctx.ports.adminPort, { path: `/static/${file}`, headers: { Host: base } });
+    assert.equal(res.status, 200, file);
+    assert.match(String(res.headers['content-type']), /^text\/javascript/, file);
+    await run(process.execPath, ['--check', join(PUBLIC_DIR, file)]);
+  }
+  const css = await request(ctx.ports.adminPort, { path: '/static/admin.css', headers: { Host: base } });
+  assert.equal(css.status, 200);
+  assert.match(String(css.headers['content-type']), /^text\/css/);
+  assert.match(css.body, /\.copy-field/);
+});
+
 test('every module under public/ is served as javascript and parses', async () => {
   const files = await listJs(PUBLIC_DIR);
   assert.ok(files.includes('app.js') && files.length >= 12, files.join(','));

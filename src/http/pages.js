@@ -65,6 +65,7 @@ export function adminShell({ title }) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
 <script type="module" src="/static/admin.js"></script>
 </head>
 <body>

@@ -1,0 +1,190 @@
+// Pure helpers for the admin UI. No DOM access: importable from node for tests.
+
+export const DEFAULT_HOST = 'review.example.com';
+export const BASE_TITLE = 'LiveReview Admin';
+
+/**
+ * @typedef {{text:string, code?:{label?:string, text:string}[]}} SetupStep
+ * Step text may contain `inline code` (single backticks); nothing else is interpreted.
+ */
+
+/**
+ * The "How to connect your domain" steps, with the owner's values filled in when known.
+ * @param {{publicHost?:string, publicPort?:number}} [values]
+ * @returns {SetupStep[]}
+ */
+export function setupSteps({ publicHost = '', publicPort = 4317 } = {}) {
+  const host = publicHost.trim() || DEFAULT_HOST;
+  return [
+    {
+      text: 'Install cloudflared.',
+      code: [
+        { label: 'macOS', text: 'brew install cloudflared' },
+        { label: 'Windows', text: 'winget install --id Cloudflare.cloudflared' },
+      ],
+    },
+    { text: 'Log in to Cloudflare.', code: [{ text: 'cloudflared tunnel login' }] },
+    { text: 'Create the tunnel.', code: [{ text: 'cloudflared tunnel create livereview' }] },
+    { text: 'Point your hostname at it.', code: [{ text: `cloudflared tunnel route dns livereview ${host}` }] },
+    {
+      text: `Put \`livereview\` in "Cloudflare tunnel name" above and restart LiveReview — it starts the tunnel for you, pointed at http://127.0.0.1:${publicPort}.`,
+    },
+    {
+      text: 'In Resend, add and verify your domain (it gives you DNS records to add in Cloudflare), then use an address on that domain as the sender.',
+    },
+  ];
+}
+
+const REPO_REASONS = {
+  'not-a-repo': "That folder isn't a git repository",
+  'not-root': 'Choose the top folder of the repository',
+  forbidden: "That folder can't be shared",
+};
+
+const CODE_MESSAGES = {
+  'duplicate-path': 'This folder has already been added',
+  'slug-taken': 'That address name is already used by another project',
+  'invalid-slug': 'The address name may only use lowercase letters, digits and "-", and must not be a reserved word',
+  'invalid-name': 'Give the project a name',
+  'invalid-email': 'That is not a valid email address',
+  'invalid-extra-hidden': 'Hidden patterns must be file names or globs such as *.log, without "/"',
+  'not-configured': 'Finish setup first: the invite link needs your public hostname',
+  'not-found': 'That no longer exists. Reload the page.',
+};
+
+/**
+ * Human text for a failed admin API call.
+ * @param {{status?:number, data?:any, message?:string}|null|undefined} err an ApiError (or anything shaped like one)
+ * @returns {string}
+ */
+export function errorMessage(err) {
+  const data = err?.data;
+  if (data?.error === 'invalid-repo') {
+    return REPO_REASONS[/** @type {keyof typeof REPO_REASONS} */ (data.reason)] ?? "That folder can't be used";
+  }
+  const known = CODE_MESSAGES[/** @type {keyof typeof CODE_MESSAGES} */ (data?.error)];
+  if (known) return known;
+  if (typeof data?.message === 'string' && data.message) return data.message;
+  if (err?.status === 401) return 'Not signed in. Open LiveReview from the link printed in your terminal.';
+  return 'That did not work. Please try again.';
+}
+
+const CONFIG_FIELDS = ['publicHost', 'ownerName', 'ownerEmail', 'fromEmail', 'resendApiKey', 'tunnelName', 'publicPort', 'adminPort'];
+
+/**
+ * Attribute a 400 from PUT /api/admin/config to a form field (the server names the field first).
+ * @param {{data?:any}|null|undefined} err
+ * @returns {{field:string|null, message:string}}
+ */
+export function configError(err) {
+  const message = errorMessage(/** @type {any} */ (err));
+  const first = message.split(/[\s:]/, 1)[0];
+  return { field: CONFIG_FIELDS.includes(first) ? first : null, message };
+}
+
+/**
+ * Required fields that are still empty. The API key counts as present when one is already saved.
+ * @param {Record<string,string>} values form values by field name
+ * @param {{hasResendKey:boolean}} state
+ * @returns {Record<string,string>} message by field
+ */
+export function missingFields(values, { hasResendKey }) {
+  /** @type {Record<string,string>} */
+  const out = {};
+  for (const f of ['publicHost', 'ownerName', 'ownerEmail', 'fromEmail']) {
+    if (!String(values[f] ?? '').trim()) out[f] = 'Required';
+  }
+  if (!hasResendKey && !String(values.resendApiKey ?? '').trim()) out.resendApiKey = 'Required';
+  return out;
+}
+
+/**
+ * Status line for a freshly issued invite.
+ * @param {{emailSent?:boolean, emailError?:string}} result
+ * @returns {{ok:boolean, text:string}}
+ */
+export function inviteStatus(result) {
+  if (result?.emailSent) return { ok: true, text: 'Invite email sent' };
+  return { ok: false, text: `Email not sent: ${result?.emailError ?? 'unknown error'} — send the link yourself` };
+}
+
+/**
+ * Window title with the unread count.
+ * @param {number} unread
+ * @returns {string}
+ */
+export const unreadTitle = (unread) => (unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE);
+
+/**
+ * Title of the desktop notification for a `notify` message.
+ * @param {{author:string, path:string, line:number}} msg
+ */
+export const notificationTitle = (msg) => `${msg.author} commented on ${msg.path}:${msg.line}`;
+
+/**
+ * A same-site path from the server, or null. Anything else (other origin, protocol-relative) is refused.
+ * @param {unknown} url
+ * @returns {string|null}
+ */
+export function internalUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//') || url.includes('\\')) return null;
+  return url;
+}
+
+/**
+ * Link to a thread in the project page (served on the admin listener too).
+ * @param {{slug:string, target:string, thread:{id:number}}} item an inbox entry
+ * @returns {string}
+ */
+export function threadHref({ slug, target, thread }) {
+  const s = encodeURIComponent(slug);
+  return target === 'live' ? `/${s}/live#c-${thread.id}` : `/${s}/commit/${encodeURIComponent(target)}#c-${thread.id}`;
+}
+
+/**
+ * Open threads per project, in the order projects first appear (the inbox is newest first).
+ * @param {{slug:string, projectName:string}[]} items
+ * @returns {{slug:string, name:string, count:number}[]}
+ */
+export function countByProject(items) {
+  /** @type {Map<string,{slug:string, name:string, count:number}>} */
+  const map = new Map();
+  for (const it of items) {
+    const row = map.get(it.slug);
+    if (row) row.count += 1;
+    else map.set(it.slug, { slug: it.slug, name: it.projectName, count: 1 });
+  }
+  return [...map.values()];
+}
+
+/**
+ * Patterns typed one per line → list (trimmed, blanks dropped, duplicates removed).
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function parsePatterns(text) {
+  return [...new Set(String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean))];
+}
+
+/** @param {string[]} list */
+export const patternsText = (list) => list.join('\n');
+
+/**
+ * First line of a comment, cut to `max` characters.
+ * @param {string} body
+ * @param {number} [max]
+ */
+export function excerpt(body, max = 140) {
+  const first = String(body).split('\n', 1)[0].trim();
+  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
+}
+
+/**
+ * Tab id from a location hash.
+ * @param {string} hash
+ * @returns {'projects'|'inbox'|'settings'}
+ */
+export function tabFromHash(hash) {
+  const t = hash.replace(/^#/, '');
+  return t === 'inbox' || t === 'settings' ? t : 'projects';
+}
