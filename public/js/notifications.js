@@ -236,6 +236,8 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
   /** @param {HTMLElement} el */
   function dismiss(el) {
     if (!el.isConnected || el.classList.contains('leaving')) return;
+    // A keyboard user inside the toast lands on the bell rather than on <body>.
+    if (el.contains(document.activeElement)) trigger.focus();
     if (reducedMotion()) {
       el.remove();
       return;
@@ -260,12 +262,30 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
       open(n);
     });
     x.addEventListener('click', () => dismiss(el));
+    // The toast stays while it is hovered or focused, and leaves a little after both end.
     let timer = setTimeout(() => dismiss(el), TOAST_MS);
-    el.addEventListener('mouseenter', () => clearTimeout(timer));
-    el.addEventListener('focusin', () => clearTimeout(timer));
-    el.addEventListener('mouseleave', () => {
+    let hovered = false;
+    const later = () => {
       clearTimeout(timer);
       timer = setTimeout(() => dismiss(el), TOAST_MS / 2);
+    };
+    el.addEventListener('mouseenter', () => {
+      hovered = true;
+      clearTimeout(timer);
+    });
+    el.addEventListener('focusin', () => clearTimeout(timer));
+    el.addEventListener('mouseleave', () => {
+      hovered = false;
+      if (!el.contains(document.activeElement)) later();
+    });
+    el.addEventListener('focusout', (e) => {
+      if (!hovered && !el.contains(/** @type {Node|null} */ (e.relatedTarget))) later();
+    });
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      clearTimeout(timer);
+      dismiss(el);
     });
     toasts.append(el);
     const live = [...toasts.children].filter((c) => !c.classList.contains('leaving'));
