@@ -20,7 +20,9 @@ import { createWatcherPool } from './watch/watcher.js';
 
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
+  // same-origin, not no-referrer: no-referrer makes browsers send `Origin: null` on form POSTs (the invite
+  // Continue button), which the Origin check rightly rejects. Tokens in URLs still never leave the site.
+  'Referrer-Policy': 'same-origin',
   'X-Frame-Options': 'DENY',
 };
 

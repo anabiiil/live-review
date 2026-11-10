@@ -403,7 +403,7 @@ test('static files and diff2html vendor bundle are served with traversal protect
 test('responses carry security headers', async () => {
   const res = await pub('/login');
   assert.equal(res.headers['x-content-type-options'], 'nosniff');
-  assert.equal(res.headers['referrer-policy'], 'no-referrer');
+  assert.equal(res.headers['referrer-policy'], 'same-origin');
   assert.equal(res.headers['x-frame-options'], 'DENY');
   assert.match(String(res.headers['content-security-policy']), /default-src 'self'/);
   assert.match(String(res.headers['content-security-policy']), new RegExp(`connect-src 'self' wss://${HOST.replaceAll('.', '\\.')};`));
