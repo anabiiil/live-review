@@ -142,7 +142,49 @@ try {
   await page.waitForSelector(`#c-${id}`);
   ok(await page.$eval(`#c-${id}`, (e) => e.classList.contains('flash')), 'a #c-id link opens the thread and flashes it');
 
+  // Comments page: filters, Hide / Unhide, Show hidden and Resolve keep keyboard focus; a card that is
+  // filtered out hands focus to the next card (else the heading).
+  await page.goto(`${base}/demo/comments`);
+  await page.waitForSelector('.ccard');
+  const cardOf = () => page.evaluate(() => /** @type {HTMLElement|null} */ (document.activeElement?.closest('[data-thread]'))?.dataset.thread ?? null);
+  await page.focus('button[data-focus-key="status:all"]');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await focusKey()) === 'status:all', 'focus stays on a status filter');
+  const ids = await page.$$eval('.ccard', (cs) => cs.map((c) => /** @type {HTMLElement} */ (c).dataset.thread));
+  ok(ids.length === 2, 'All shows both threads');
+  await page.focus(`button[data-focus-key="hide:${ids[0]}"]`);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await cardOf()) === ids[1], 'hiding a card moves focus into the next card');
+  await page.focus('button[data-focus-key="showhidden"]');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await focusKey()) === 'showhidden', 'focus stays on Show hidden');
+  await page.focus(`button[data-focus-key="hide:${ids[0]}"]`);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await focusKey()) === `hide:${ids[0]}`, 'focus stays on Unhide');
+  const resolveKey = await page.$eval('.ccard button[data-focus-key^="resolve:"]', (b) => /** @type {HTMLElement} */ (b).dataset.focusKey);
+  await page.focus(`button[data-focus-key="${resolveKey}"]`);
+  const before = await page.$eval(`button[data-focus-key="${resolveKey}"]`, (b) => b.textContent);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(([k, t]) => document.querySelector(`button[data-focus-key="${k}"]`)?.textContent !== t, [resolveKey, before]);
+  ok((await focusKey()) === resolveKey, 'focus stays on Resolve / Reopen');
+  // Reopening in the Resolved view filters the card out.
+  await page.focus('button[data-focus-key="status:resolved"]');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  const openKey = await page.$eval('.ccard button[data-focus-key^="resolve:"]', (b) => /** @type {HTMLElement} */ (b).dataset.focusKey);
+  await page.focus(`button[data-focus-key="${openKey}"]`);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction((k) => !document.querySelector(`button[data-focus-key="${k}"]`), openKey);
+  ok(await page.evaluate(() => document.activeElement?.tagName === 'H1' || !!document.activeElement?.closest('[data-thread]')),
+    'reopening a card in the Resolved view moves focus to the next card or the heading, not the body');
+
   // Phone: the mark stays in reach when the code is scrolled sideways.
+  await page.goto(`${base}/demo/live`);
+  await page.waitForSelector('.mark');
   await page.setViewportSize({ width: 375, height: 812 });
   await page.waitForTimeout(300);
   await page.$eval('.file-body', (b) => (b.scrollLeft = 500));

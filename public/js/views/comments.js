@@ -4,6 +4,7 @@
 import { api, get } from '../api.js';
 import { createUiState, renderThread } from '../comments.js';
 import { h, messageBox, setChildren, storage } from '../dom.js';
+import { captureFocus, restoreFocus } from '../focus.js';
 import { icon } from '../icons.js';
 import {
   filterThreads, groupThreads, hiddenKey, parseHidden, serializeHidden, showInCodeHref, threadPlace, toggleHidden, whereText,
@@ -129,7 +130,7 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
       href ? link({ class: 'ccard-action' }, icon('arrow-up-right'), 'Show in code') : null,
       h(
         'button',
-        { class: 'ccard-action', type: 'button', 'aria-pressed': String(isHidden), onclick: () => flipHidden(t.id) },
+        { class: 'ccard-action', type: 'button', 'aria-pressed': String(isHidden), 'data-focus-key': `hide:${t.id}`, onclick: () => flipHidden(t.id) },
         icon('eye-off'),
         isHidden ? 'Unhide' : 'Hide',
       ),
@@ -155,7 +156,7 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
     return h(
       'button',
       {
-        class: 'seg-btn', type: 'button', 'aria-pressed': String(status === s),
+        class: 'seg-btn', type: 'button', 'aria-pressed': String(status === s), 'data-focus-key': `status:${s}`,
         onclick: () => {
           status = s;
           draw();
@@ -167,7 +168,7 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
   };
 
   function filters(/** @type {{open:number, resolved:number, all:number}} */ counts, /** @type {number} */ hiddenCount) {
-    const mine = /** @type {HTMLInputElement} */ (h('input', { type: 'checkbox' }));
+    const mine = /** @type {HTMLInputElement} */ (h('input', { type: 'checkbox', 'data-focus-key': 'onlymine' }));
     mine.checked = onlyMine;
     mine.addEventListener('change', () => {
       onlyMine = mine.checked;
@@ -181,7 +182,7 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
       h('span', { class: 'spacer' }),
       hiddenCount || showHidden
         ? h('button', {
-            class: 'link', type: 'button', 'aria-pressed': String(showHidden),
+            class: 'link', type: 'button', 'aria-pressed': String(showHidden), 'data-focus-key': 'showhidden',
             text: showHidden ? 'Leave hidden out' : `Show hidden (${hiddenCount})`,
             onclick: () => {
               showHidden = !showHidden;
@@ -211,11 +212,7 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
     }
     // Keep the reader's place and the draft they are typing across a live redraw.
     const y = window.scrollY;
-    const active = document.activeElement;
-    const focus =
-      active instanceof HTMLTextAreaElement && root.contains(active) && active.dataset.draft
-        ? { key: active.dataset.draft, start: active.selectionStart, end: active.selectionEnd }
-        : null;
+    const snap = captureFocus(root, ui);
 
     const { visible, counts, hiddenCount } = filterThreads(threads, { status, onlyMine, email: me.email, hidden, showHidden });
     const groups = groupThreads(visible);
@@ -242,18 +239,8 @@ export function createCommentsPage({ me, load, slug, crossProject = false, inApp
     );
 
     window.scrollTo(window.scrollX, y);
-    const wanted = ui.pendingFocus ?? focus?.key ?? null;
-    if (wanted) {
-      const ta = [...root.querySelectorAll('textarea[data-draft]')].find((el) => /** @type {HTMLElement} */ (el).dataset.draft === wanted);
-      if (ta instanceof HTMLTextAreaElement && !ta.disabled) {
-        ta.focus({ preventScroll: true });
-        if (ui.pendingFocus) {
-          ta.setSelectionRange(ta.value.length, ta.value.length);
-          ta.scrollIntoView({ block: 'nearest' });
-        } else if (focus) ta.setSelectionRange(focus.start, focus.end);
-      }
-      ui.pendingFocus = null;
-    }
+    // A control whose card was filtered out hands focus to the next card, else the heading.
+    restoreFocus(root, ui, snap, { fallback: true });
   }
 
   /** Another tab or window changed what this viewer hides. */

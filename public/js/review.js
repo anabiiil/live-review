@@ -3,6 +3,7 @@
 import { api, getComments } from './api.js';
 import { createUiState, renderThread } from './comments.js';
 import { renderFile } from './diff.js';
+import { captureFocus, restoreFocus } from './focus.js';
 import { h, setChildren, storage } from './dom.js';
 import { flashOffset, threadForComment, threadsByKey } from './pairing.js';
 import { commentIdFromHash } from './route.js';
@@ -83,33 +84,13 @@ export function createReview({ slug, target, root, me }) {
     if (destroyed || !haveDiff) return;
     const x = window.scrollX;
     const y = window.scrollY;
-    const active = document.activeElement;
-    const focus =
-      active instanceof HTMLTextAreaElement && active.dataset.draft
-        ? { key: active.dataset.draft, start: active.selectionStart, end: active.selectionEnd }
-        : null;
     // Buttons that re-render the page (marks, file header controls, Resolve) carry a stable key.
-    const control = ui.focusKey ?? (active instanceof HTMLElement && root.contains(active) ? active.dataset.focusKey ?? null : null);
-    ui.focusKey = null;
+    const snap = captureFocus(root, ui);
 
     build();
 
     window.scrollTo(x, y);
-    const wanted = ui.pendingFocus ?? focus?.key ?? null;
-    if (wanted) {
-      const ta = [...root.querySelectorAll('textarea[data-draft]')].find((el) => /** @type {HTMLElement} */ (el).dataset.draft === wanted);
-      if (ta instanceof HTMLTextAreaElement && !ta.disabled) {
-        ta.focus({ preventScroll: true });
-        if (ui.pendingFocus) {
-          ta.setSelectionRange(ta.value.length, ta.value.length);
-          ta.scrollIntoView({ block: 'nearest' });
-        } else if (focus) ta.setSelectionRange(focus.start, focus.end);
-      }
-      ui.pendingFocus = null;
-    } else if (control) {
-      const el = [...root.querySelectorAll('[data-focus-key]')].find((n) => /** @type {HTMLElement} */ (n).dataset.focusKey === control);
-      if (el instanceof HTMLElement) el.focus({ preventScroll: true });
-    }
+    restoreFocus(root, ui, snap);
     ui.opening.clear();
     applyHash();
   }
