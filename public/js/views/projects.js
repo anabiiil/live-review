@@ -1,6 +1,7 @@
 import { get } from '../api.js';
 import { createChrome } from '../chrome.js';
 import { h, messageBox, setChildren } from '../dom.js';
+import { openCount, projectRowMeta } from '../shell-model.js';
 
 /**
  * @param {import('../chrome.js').Ctx} ctx
@@ -24,19 +25,21 @@ export function projectsView(ctx, host) {
         h(
           'div',
           { class: 'container' },
-          h('h1', { text: 'Projects' }),
+          h('div', { class: 'page-head' }, h('h1', { text: 'Projects' })),
           h(
             'ul',
-            { class: 'project-list' },
+            { class: 'rows project-rows' },
             list.map((/** @type {{slug:string, name:string, open:number}} */ p) =>
               h(
                 'li',
                 null,
                 h(
                   'a',
-                  { class: 'project-card', href: `/${encodeURIComponent(p.slug)}/live`, 'data-link': '' },
-                  h('span', { class: 'project-title', dir: 'auto', text: p.name }),
-                  p.open ? h('span', { class: 'chip open-chip', text: p.open === 1 ? '1 open comment' : `${p.open} open comments` }) : h('span', { class: 'muted', text: 'No open comments' }),
+                  { class: 'row project-row', href: `/${encodeURIComponent(p.slug)}/live`, 'data-link': '' },
+                  h('span', { class: 'row-main' }, h('span', { class: 'row-title', dir: 'auto', text: p.name }), h('span', { class: 'row-sub', dir: 'ltr', text: `/${p.slug}` })),
+                  p.open
+                    ? h('span', { class: 'row-open' }, h('span', { class: 'mark-count', text: openCount(p.open) }), h('span', { class: 'row-open-text', text: p.open === 1 ? 'open comment' : 'open comments' }))
+                    : h('span', { class: 'row-open quiet', text: projectRowMeta(p) }),
                 ),
               ),
             ),

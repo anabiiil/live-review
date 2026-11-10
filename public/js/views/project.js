@@ -5,14 +5,14 @@ import { createChrome } from '../chrome.js';
 import { h, messageBox, setChildren } from '../dom.js';
 
 /**
- * @typedef {{ctx:import('../chrome.js').Ctx, chrome:ReturnType<typeof createChrome>, project:{slug:string, name:string}}} ProjectCtx
+ * @typedef {{ctx:import('../chrome.js').Ctx, chrome:ReturnType<typeof createChrome>, project:import('../chrome.js').ProjectSummary}} ProjectCtx
  */
 
 /**
  * @param {import('../chrome.js').Ctx} ctx
  * @param {HTMLElement} host
  * @param {string} slug
- * @param {'live'|'commits'} tab
+ * @param {import('../chrome.js').Tab} tab
  * @param {(p:ProjectCtx)=>{destroy:()=>void}} build
  */
 export function projectPage(ctx, host, slug, tab, build) {
@@ -35,7 +35,7 @@ export function projectPage(ctx, host, slug, tab, build) {
       return;
     }
     plain.destroy();
-    chrome = createChrome(ctx, { project, tab });
+    chrome = createChrome(ctx, { project, projects: list, tab });
     setChildren(host, chrome.root);
     document.title = `${project.name} · LiveReview`;
     ctx.socket.start();

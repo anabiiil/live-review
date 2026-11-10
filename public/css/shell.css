@@ -1,0 +1,274 @@
+/* LiveReview shell: top bar, sign-in and static pages, project and commit lists, commit header. */
+
+/* ---- product mark --------------------------------------------------------------------- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--fs-14);
+  letter-spacing: -0.01em;
+}
+.brand:hover { text-decoration: none; }
+.brand svg.icon-mark { width: 20px; height: 20px; vertical-align: 0; }
+svg .mark-tab { fill: var(--hl); stroke: currentColor; }
+.brand.big { display: flex; justify-content: center; gap: 10px; margin: 0 0 var(--s5); font-size: var(--fs-20); }
+.brand.big svg.icon-mark { width: 28px; height: 28px; }
+
+/* ---- top bar -------------------------------------------------------------------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: var(--topbar-h);
+  padding: 0 var(--s4);
+  background: var(--sheet);
+  border-bottom: 1px solid var(--rule);
+}
+.topbar .spacer, .spacer { flex: 1; min-width: 0; }
+.topbar-sep { flex: none; width: 1px; height: 20px; background: var(--rule); }
+.menu-anchor { position: relative; flex: none; min-width: 0; }
+.menu.end { right: 0; }
+.menu { top: calc(100% + 6px); }
+
+.switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 28ch;
+  height: 32px;
+  padding: 0 6px 0 8px;
+  margin-inline-start: -4px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--ink);
+  font: 600 var(--fs-14) / 1 var(--sans);
+  cursor: pointer;
+}
+.switcher:hover, .switcher[aria-expanded="true"] { background: var(--sheet-2); }
+.switcher-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher svg.icon { width: 14px; height: 14px; color: var(--ink-soft); vertical-align: 0; }
+.menu-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.where { display: inline-flex; align-items: center; gap: var(--s3); min-width: 0; }
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink-soft);
+  font: var(--fs-12) / 1 var(--mono);
+}
+.branch svg.icon { width: 14px; height: 14px; vertical-align: 0; }
+.branch-name { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ink-soft); font-size: var(--fs-12); }
+.live-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, var(--ink-soft) 55%, transparent); }
+.live[data-state="live"] .live-dot { background: var(--live); }
+.live[data-state="live"] .live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--live);
+  animation: live-pulse 2.4s ease-out infinite;
+}
+@keyframes live-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live[data-state="live"] .live-dot::after { animation: none; opacity: 0; }
+}
+
+/* tabs: quiet text, the current one sits on a cobalt rule at the bar's edge */
+.tabs { display: flex; align-self: stretch; gap: var(--s1); }
+.tab, .tabs > a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--ink-soft);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tabs > a:hover { color: var(--ink); text-decoration: none; }
+.tabs > a[aria-current="page"] { color: var(--ink); }
+.tabs > a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--cobalt);
+}
+.tabs > a:focus-visible { outline-offset: -4px; }
+.tab-count { min-width: 18px; padding: 0 5px; line-height: 17px; }
+
+.bell-slot { display: inline-flex; align-items: center; }
+.bell-slot:empty { display: none; }
+
+.avatar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--cobalt-wash);
+  color: var(--cobalt);
+  font: 600 var(--fs-12) / 1 var(--sans);
+  letter-spacing: 0.02em;
+}
+.avatar.small { width: 22px; height: 22px; font-size: 10px; }
+.avatar-btn:hover .avatar, .avatar-btn[aria-expanded="true"] .avatar { box-shadow: 0 0 0 2px var(--rule-strong); }
+.avatar-btn:focus-visible { outline-offset: 0; border-radius: 50%; }
+.menu-who { padding: var(--s2) var(--s3); }
+.menu-who p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-who-name { font-weight: 600; }
+.menu-who-email { color: var(--ink-soft); font-size: var(--fs-13); }
+.menu-item svg.icon { color: var(--ink-soft); }
+
+/* ---- page frame ----------------------------------------------------------------------- */
+.page-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
+.page-head h1 { margin: 0; }
+.list-more { margin-top: var(--s4); }
+.list-more:has(> [hidden]) { display: none; }
+
+/* ---- rows (projects, commits): one sheet, hairline separators ------------------------- */
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sheet);
+  overflow: hidden;
+}
+.rows:empty { display: none; }
+.rows > li + li { border-top: 1px solid var(--rule); }
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 56px;
+  padding: 10px var(--s4);
+  color: var(--ink);
+  transition: background-color var(--t-fast);
+}
+.row:hover { background: color-mix(in srgb, var(--sheet-2) 70%, var(--sheet)); text-decoration: none; }
+.row:focus-visible { outline-offset: -2px; border-radius: 0; }
+.row-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { color: var(--ink-soft); font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-row .row-title { font-weight: 600; }
+.project-row .row-sub { font-family: var(--mono); font-size: var(--fs-12); }
+.row-open { display: inline-flex; align-items: center; gap: var(--s2); flex: none; font-size: var(--fs-13); }
+.row-open.quiet { color: var(--ink-soft); }
+.commit-row .sha { flex: none; }
+.sha { font: var(--fs-12) / 20px var(--mono); color: var(--ink-soft); }
+a.sha { color: var(--cobalt); }
+
+/* ---- commit header -------------------------------------------------------------------- */
+.commit-head {
+  margin-bottom: var(--s4);
+  padding: var(--s4) var(--s5);
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sheet);
+}
+.commit-subject { margin: 0; font-size: var(--fs-20); overflow-wrap: anywhere; }
+.commit-body { margin: var(--s2) 0 0; color: var(--ink-soft); font: var(--fs-14) / var(--lh-body) var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
+.commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s5);
+  margin-top: var(--s3);
+  color: var(--ink-soft);
+  font-size: var(--fs-13);
+}
+.commit-by { display: inline-flex; align-items: center; gap: var(--s2); }
+.commit-author { color: var(--ink); font-weight: 500; }
+.commit-sha { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.commit-sha svg.icon { width: 14px; height: 14px; vertical-align: 0; }
+.sha-full { font: var(--fs-12) / 1.4 var(--mono); overflow-wrap: anywhere; }
+.commit-parents .sha + .sha { margin-inline-start: var(--s2); }
+/* v1 names kept for anything still using them */
+.meta { color: var(--ink-soft); font-size: var(--fs-13); margin: 0; overflow-wrap: anywhere; }
+
+/* ---- sign-in, invite and message pages ------------------------------------------------ */
+.static-main { max-width: 400px; margin: 0 auto; padding: 12vh var(--s4) var(--s6); }
+.static-main .card { padding: var(--s5); }
+.static-main h1 { margin-bottom: var(--s1); font-size: var(--fs-20); }
+.static-main .intro, .static-card p.muted { margin-bottom: var(--s4); }
+.static-card > p:only-child { margin: 0; }
+.static-card h1 { font-size: var(--fs-26); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+.static-card p.muted:first-child { margin-bottom: var(--s1); }
+.static-card form { margin-top: var(--s5); }
+.static-card .btn.big, .login .btn.big { width: 100%; }
+.card form > label + input { margin-top: 0; }
+.form-actions { display: flex; flex-direction: column; align-items: stretch; gap: var(--s2); margin-top: var(--s4); }
+.form-actions button.link { align-self: center; }
+
+/* ---- narrow screens ------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .brand-name { display: none; }
+  .live-text { display: none; }
+}
+/* ≤ 600 px: the tabs become a segmented control along the bottom edge. */
+@media (max-width: 600px) {
+  .topbar { gap: 10px; padding: 0 var(--s3); }
+  .topbar-sep { display: none; }
+  .switcher { max-width: 16ch; }
+  .branch-name { max-width: 12ch; }
+  .page:has(> .topbar .tabs) { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    gap: 2px;
+    padding: 6px var(--s3) calc(6px + env(safe-area-inset-bottom));
+    background: var(--sheet);
+    border-top: 1px solid var(--rule);
+  }
+  .tabs > a {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
+    border-radius: var(--r-control);
+  }
+  .tabs > a[aria-current="page"] { background: var(--cobalt-wash); color: var(--cobalt); }
+  .tabs > a[aria-current="page"]::after { display: none; }
+  .static-main { padding-top: 8vh; }
+  .commit-head { padding: var(--s4); }
+  .row { padding: 10px var(--s3); }
+  .row-open-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+@media (max-width: 380px) {
+  .branch { display: none; }
+}
+.container.wide > .review { padding-left: 0; padding-right: 0; }

@@ -8,10 +8,10 @@ import { relativeTime } from '../format.js';
  */
 export function commitsBody({ ctx, chrome, project }) {
   const slug = encodeURIComponent(project.slug);
-  const list = h('ol', { class: 'commit-list' });
+  const list = h('ol', { class: 'rows commit-rows' });
   const status = h('p', { class: 'muted pad', text: 'Loading…' });
   const more = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn', type: 'button', text: 'Load more', hidden: '' }));
-  setChildren(chrome.main, h('div', { class: 'container' }, h('h1', { text: 'Commits' }), status, list, more));
+  setChildren(chrome.main, h('div', { class: 'container' }, h('div', { class: 'page-head' }, h('h1', { text: 'Commits' })), status, list, h('div', { class: 'list-more' }, more)));
   let alive = true;
   let loaded = 0;
   let hasMore = false;
@@ -25,10 +25,14 @@ export function commitsBody({ ctx, chrome, project }) {
       null,
       h(
         'a',
-        { class: 'commit-row', href: `/${slug}/commit/${c.sha}`, 'data-link': '' },
-        h('span', { class: 'sha', text: c.short }),
-        h('span', { class: 'subject', dir: 'auto', text: c.subject || '(no message)' }),
-        h('span', { class: 'meta' }, h('span', { dir: 'auto', text: c.author }), ' · ', h('time', { datetime: c.date, title: new Date(c.date).toLocaleString(), text: relativeTime(c.date) })),
+        { class: 'row commit-row', href: `/${slug}/commit/${c.sha}`, 'data-link': '' },
+        h(
+          'span',
+          { class: 'row-main' },
+          h('span', { class: 'row-title', dir: 'auto', text: c.subject || '(no message)' }),
+          h('span', { class: 'row-sub' }, h('bdi', { text: c.author }), ' committed ', h('time', { datetime: c.date, title: new Date(c.date).toLocaleString(), text: relativeTime(c.date) })),
+        ),
+        h('span', { class: 'sha', dir: 'ltr', text: c.short }),
       ),
     );
 

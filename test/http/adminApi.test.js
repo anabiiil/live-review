@@ -174,7 +174,7 @@ test('GET /admin: one-time token is exchanged once, then the cookie opens the ad
   assert.match(String(page.headers['content-type']), /text\/html/);
   assert.ok(page.body.includes('/static/admin.js'));
   assert.match(page.body, /<title>LiveReview Admin<\/title>/);
-  assert.ok(page.body.includes('/static/app.css'));
+  assert.ok(page.body.includes('/static/css/tokens.css') && page.body.includes('/static/css/base.css'));
 
   const script = await adm('/static/admin.js', { cookie: null });
   assert.equal(script.status, 200);

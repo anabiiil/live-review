@@ -14,6 +14,11 @@ const STATIC_DIRS = {
   static: resolve(ROOT, 'public'),
   vendor: resolve(ROOT, 'node_modules', 'diff2html', 'bundles'),
 };
+/** Self-hosted fonts: `/vendor/fonts/{package}/{file}.woff2` → `node_modules/@fontsource/{package}/files/`. */
+const FONT_DIRS = new Map(
+  ['ibm-plex-sans', 'ibm-plex-sans-arabic', 'ibm-plex-mono'].map((pkg) => [pkg, resolve(ROOT, 'node_modules', '@fontsource', pkg, 'files')]),
+);
+const FONT_FILE = /^[a-z0-9-]+\.woff2$/;
 
 const TYPES = {
   '.js': 'text/javascript; charset=utf-8',
@@ -21,10 +26,22 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.woff2': 'font/woff2',
 };
 
 const NOT_FOUND_HTML = 'Not found.';
 const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your terminal.';
+
+const BASE_CSS = ['/static/css/tokens.css', '/static/css/base.css', '/static/css/shell.css'];
+const APP_CSS = [...BASE_CSS, '/static/css/diff.css'];
+/** @param {string[]} hrefs */
+const links = (hrefs) => hrefs.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n');
+
+/** The product mark as static markup (pages without scripts). */
+const MARK_SVG =
+  '<svg class="icon icon-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M15 3v18"/><rect x="15" y="8" width="6" height="5" class="mark-tab"/></svg>';
+const BRAND_HTML = `<p class="brand big">${MARK_SVG}<span>LiveReview</span></p>`;
 
 /** @param {string} s */
 export const escapeHtml = (s) =>
@@ -42,7 +59,7 @@ export function shell({ title }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/static/app.css">
+${links(APP_CSS)}
 <script type="module" src="/static/app.js"></script>
 </head>
 <body>
@@ -64,7 +81,7 @@ export function adminShell({ title }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/static/app.css">
+${links(APP_CSS)}
 <link rel="stylesheet" href="/static/admin.css">
 <script type="module" src="/static/admin.js"></script>
 </head>
@@ -87,10 +104,15 @@ export function messagePage(message) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LiveReview</title>
-<link rel="stylesheet" href="/static/app.css">
+${links(BASE_CSS)}
 </head>
-<body>
+<body class="static-page">
+<main class="static-main">
+${BRAND_HTML}
+<div class="card static-card">
 <p>${escapeHtml(message)}</p>
+</div>
+</main>
 </body>
 </html>
 `;
@@ -109,13 +131,20 @@ export function invitePage(projectName, token) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Join ${escapeHtml(projectName)} · LiveReview</title>
-<link rel="stylesheet" href="/static/app.css">
+${links(BASE_CSS)}
 </head>
-<body>
-<p>You have been invited to review <strong>${escapeHtml(projectName)}</strong> on LiveReview.</p>
+<body class="static-page">
+<main class="static-main">
+${BRAND_HTML}
+<div class="card static-card">
+<p class="muted">You've been invited to review</p>
+<h1 dir="auto">${escapeHtml(projectName)}</h1>
+<p class="muted">Read its live changes and commits, and comment on any line. Continue to open the project.</p>
 <form method="post" action="/invite/${encodeURIComponent(token)}">
-<button type="submit">Continue</button>
+<button class="btn primary big" type="submit">Continue</button>
 </form>
+</div>
+</main>
 </body>
 </html>
 `;
@@ -159,6 +188,23 @@ async function resolveStatic(dir, rawRest) {
 }
 
 /**
+ * A woff2 file of one of the font packages. Fonts change only with the package version, so browsers may keep them.
+ * @param {RouteContext} ctx
+ */
+async function serveFont({ res, params }) {
+  const dir = FONT_DIRS.get(params.pkg);
+  const name = params.file;
+  const file = dir && FONT_FILE.test(name) ? await resolveStatic(dir, name) : null;
+  if (!file) {
+    sendJson(res, 404, { error: 'not-found' });
+    return;
+  }
+  const data = await readFile(file);
+  res.writeHead(200, { 'Content-Type': 'font/woff2', 'Content-Length': data.length, 'Cache-Control': 'public, max-age=31536000, immutable' });
+  res.end(data);
+}
+
+/**
  * @param {keyof typeof STATIC_DIRS} which
  * @returns {(ctx:RouteContext)=>Promise<void>}
  */
@@ -183,6 +229,7 @@ const serveStatic = (which) => async ({ res, params }) => {
 export function registerPages(router, { projects, sessions, now }) {
   router.add('GET', '/static/*', serveStatic('static'), { auth: false });
   router.add('GET', '/vendor/diff2html/*', serveStatic('vendor'), { auth: false });
+  router.add('GET', '/vendor/fonts/:pkg/:file', serveFont, { auth: false });
 
   const INVITE_GONE = 'This invite link is no longer valid.';
   // Opening the link only shows a page: link previewers and mail scanners fetch it too, and must not use up

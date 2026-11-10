@@ -1,5 +1,6 @@
 import { ApiError, get, post } from '../api.js';
 import { h, setChildren } from '../dom.js';
+import { icon } from '../icons.js';
 
 /** Sign-in calls answer 401 themselves; that must not bounce the page back to /login. */
 const NO_REDIRECT = { auth: false };
@@ -13,7 +14,10 @@ export function loginView(ctx, host) {
   document.title = 'Sign in · LiveReview';
   let email = '';
   const card = h('div', { class: 'card login' });
-  setChildren(host, h('div', { class: 'login-page' }, h('p', { class: 'brand big', text: 'LiveReview' }), card));
+  setChildren(
+    host,
+    h('main', { class: 'static-main' }, h('p', { class: 'brand big' }, icon('mark'), h('span', { text: 'LiveReview' })), card),
+  );
 
   /**
    * One text field + submit, with an error line.
@@ -22,7 +26,7 @@ export function loginView(ctx, host) {
   function form({ title, intro, label, input, submit, run, back, backLabel }) {
     const field = /** @type {HTMLInputElement} */ (h('input', { id: 'f', required: true, ...input }));
     const error = h('p', { class: 'form-error', role: 'alert' });
-    const button = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'submit', text: submit }));
+    const button = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary big', type: 'submit', text: submit }));
     const f = h(
       'form',
       {
@@ -46,9 +50,9 @@ export function loginView(ctx, host) {
       h('label', { for: 'f', text: label }),
       field,
       error,
-      h('div', { class: 'composer-actions' }, button, back ? h('button', { class: 'link', type: 'button', text: backLabel, onclick: back }) : null),
+      h('div', { class: 'form-actions' }, button, back ? h('button', { class: 'link', type: 'button', text: backLabel, onclick: back }) : null),
     );
-    setChildren(card, h('h1', { text: title }), intro ? h('p', { class: 'muted', text: intro }) : null, f);
+    setChildren(card, h('h1', { text: title }), intro ? h('p', { class: 'muted intro', text: intro }) : null, f);
     field.focus();
   }
 
