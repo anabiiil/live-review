@@ -228,21 +228,21 @@ export function createHub({ projects, watcherPool, snapshot, heartbeatMs = 30000
     broadcast,
 
     /**
-     * Send `msg` to every owner socket (admin listener).
+     * Send `msg` to every owner socket (admin listener) whose session is still valid.
      * @param {object} msg
      */
     sendToOwner(msg) {
-      for (const c of clients) if (c.kind === 'admin') send(c, msg);
+      for (const c of clients) if (c.kind === 'admin' && c.signedIn()) send(c, msg);
     },
 
     /**
-     * Send `msg` to every reviewer socket (public listener) signed in as `email`.
+     * Send `msg` to every reviewer socket (public listener) signed in as `email` whose session is still valid.
      * @param {string} email
      * @param {object} msg
      */
     sendToEmail(email, msg) {
       const e = normalizeEmail(email);
-      for (const c of clients) if (c.kind === 'public' && normalizeEmail(c.viewer.email) === e) send(c, msg);
+      for (const c of clients) if (c.kind === 'public' && normalizeEmail(c.viewer.email) === e && c.signedIn()) send(c, msg);
     },
 
     /**

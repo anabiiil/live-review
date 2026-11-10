@@ -319,6 +319,28 @@ test('a socket whose session ended (logout; expiry uses the same lookup) is clos
   }
 });
 
+test('notifications are not pushed to a socket whose session has ended, even before the heartbeat closes it', async () => {
+  const { project } = await newProject('Ended');
+  const cookie = await addAndSignIn(project.id, 'ended@example.com');
+  const rev = await connect('public', { cookie });
+  const owner = await connect('admin');
+  const { hub, sessions, owner: ownerAuth } = ctx.app.services;
+  const note = { type: 'notification', notification: { id: 1 } };
+  // Session ended and notification sent in one tick: the heartbeat cannot close the socket in between.
+  sessions.revoke(cookie.slice(cookie.indexOf('=') + 1));
+  hub.sendToEmail('ended@example.com', note);
+  const isOwnerSession = ownerAuth.isOwnerSession;
+  ownerAuth.isOwnerSession = () => false;
+  try {
+    hub.sendToOwner(note);
+  } finally {
+    ownerAuth.isOwnerSession = isOwnerSession;
+  }
+  await sleep(HEARTBEAT / 2);
+  assert.ok(!rev.messages.some((/** @type {any} */ m) => m.type === 'notification'), 'reviewer socket got nothing');
+  assert.ok(!owner.messages.some((/** @type {any} */ m) => m.type === 'notification'), 'owner socket got nothing');
+});
+
 test('renaming a project slug tells its subscribers where it moved; subscribing under the new slug resends the state', async () => {
   const { project } = await newProject('Moving');
   const cookie = await addAndSignIn(project.id, 'mover@example.com');
