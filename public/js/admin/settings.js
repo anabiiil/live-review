@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { h, setChildren } from '../dom.js';
 import { parseBody } from '../format.js';
 import { icon } from '../icons.js';
-import { configError, missingFields, setupSteps } from './helpers.js';
+import { configError, emailHintText, missingFields, setupSteps } from './helpers.js';
 import { busy, confirmDialog, field } from './widgets.js';
 
 /** `inline code` in a step becomes <code>; everything else is text. @param {string} text */
@@ -100,7 +100,7 @@ export function settingsView({ config, me = null, setup, onSaved }) {
   input('publicPort').addEventListener('input', redrawSteps);
 
   // ---- the owner's email preference: saves by itself, not with the form ----
-  const emailHint = () => (config.hasResendKey ? 'At most one email a minute, with new comments and replies.' : 'Needs email set up first: add a Resend key and sender under Email.');
+  const emailHint = () => emailHintText(config);
   const toggleHint = h('span', { class: 'toggle-hint', id: 'f-notify-hint', text: emailHint() });
   const toggleError = h('p', { class: 'form-error', role: 'alert' });
   const toggle = h(

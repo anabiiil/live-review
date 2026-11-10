@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   setupSteps, errorMessage, configError, missingFields, inviteStatus, unreadTitle,
-  parsePatterns, tabFromHash, normalizeEmail,
+  parsePatterns, tabFromHash, normalizeEmail, emailHintText,
   createDraftState, setDraft, getDraft, dropDrafts, rememberFocus, takeFocus,
 } from '../../public/js/admin/helpers.js';
 
@@ -119,4 +119,13 @@ test('tabFromHash defaults to projects; the v1 inbox address opens comments', ()
   assert.equal(tabFromHash('#settings'), 'settings');
   assert.equal(tabFromHash(''), 'projects');
   assert.equal(tabFromHash('#nope'), 'projects');
+});
+
+test('emailHintText: emails need both a Resend key and a sender', () => {
+  const ready = 'At most one email a minute, with new comments and replies.';
+  const setup = 'Needs email set up first: add a Resend key and sender under Email.';
+  assert.equal(emailHintText({ hasResendKey: true, fromEmail: 'lr@example.test' }), ready);
+  assert.equal(emailHintText({ hasResendKey: true, fromEmail: '' }), setup);
+  assert.equal(emailHintText({ hasResendKey: false, fromEmail: 'lr@example.test' }), setup);
+  assert.equal(emailHintText({}), setup);
 });

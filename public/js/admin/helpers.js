@@ -184,3 +184,13 @@ export function tabFromHash(hash) {
   if (t === 'inbox') return 'comments';
   return t === 'comments' || t === 'settings' ? t : 'projects';
 }
+
+/**
+ * The hint under the owner's "Email me about comments" switch: emails need both a Resend key and a sender.
+ * @param {{hasResendKey?:boolean, fromEmail?:string}} config
+ * @returns {string}
+ */
+export const emailHintText = (config) =>
+  config.hasResendKey && (config.fromEmail ?? '').trim() !== ''
+    ? 'At most one email a minute, with new comments and replies.'
+    : 'Needs email set up first: add a Resend key and sender under Email.';
