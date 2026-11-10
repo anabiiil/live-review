@@ -84,7 +84,7 @@ function pub(path, { method = 'GET', body, cookie, origin = ORIGIN, headers = {}
 /** Sign alice in through an invite link; returns the Cookie header value. */
 async function aliceCookie() {
   const token = ctx.app.services.projects.createInvite(ctx.nwc.id, 'alice@example.com', Date.now());
-  const res = await pub(`/invite/${token}`);
+  const res = await pub(`/invite/${token}`, { method: 'POST' });
   return `lr_session=${res.cookies.lr_session}`;
 }
 
@@ -111,9 +111,22 @@ test('reviewer without a session gets 401 from the API and a redirect from pages
   assert.match(login.body, /<script type="module" src="\/static\/app\.js"><\/script>/);
 });
 
-test('invite link signs in and redirects to the project', async () => {
+test('opening an invite link only shows a page; its form POST signs in once', async () => {
   const token = ctx.app.services.projects.createInvite(ctx.nwc.id, 'alice@example.com', Date.now());
-  const res = await pub(`/invite/${token}`);
+  for (let i = 0; i < 2; i++) {
+    const page = await pub(`/invite/${token}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers['set-cookie'], undefined);
+    assert.match(page.body, new RegExp(`<form method="post" action="/invite/${token}">`));
+    assert.doesNotMatch(page.body, /<script/);
+  }
+  const forged = await pub(`/invite/${token}`, { method: 'POST', origin: 'https://evil.example' });
+  assert.equal(forged.status, 403);
+  const noOrigin = await pub(`/invite/${token}`, { method: 'POST', origin: '' });
+  assert.equal(noOrigin.status, 403);
+  assert.equal((await pub('/invite/not-a-token')).status, 410);
+
+  const res = await pub(`/invite/${token}`, { method: 'POST' });
   assert.equal(res.status, 302);
   assert.equal(res.headers.location, '/nwc-legal');
   const setCookie = res.headers['set-cookie']?.[0] ?? '';
@@ -121,9 +134,10 @@ test('invite link signs in and redirects to the project', async () => {
   const me = await pub('/api/me', { cookie: `lr_session=${res.cookies.lr_session}` });
   assert.deepEqual(me.json(), { email: 'alice@example.com', name: null, kind: 'reviewer' });
 
-  const again = await pub(`/invite/${token}`);
+  const again = await pub(`/invite/${token}`, { method: 'POST' });
   assert.equal(again.status, 410);
   assert.match(again.body, /This invite link is no longer valid/);
+  assert.equal((await pub(`/invite/${token}`)).status, 410, 'a used link shows the no-longer-valid page');
 });
 
 test('reviewer sees only member projects; no-access and unknown give identical 404s', async () => {
@@ -241,7 +255,7 @@ test('comments: create with server anchor, list, reply, edit, resolve, delete', 
   assert.deepEqual(rewritten, []);
 
   const bobToken = ctx.app.services.projects.createInvite(ctx.otherP.id, 'bob@example.com', Date.now());
-  const bob = `lr_session=${(await pub(`/invite/${bobToken}`)).cookies.lr_session}`;
+  const bob = `lr_session=${(await pub(`/invite/${bobToken}`, { method: 'POST' })).cookies.lr_session}`;
   const foreign = await pub(`/api/comments/${c.id}`, { method: 'DELETE', cookie: bob });
   assert.equal(foreign.status, 404);
 

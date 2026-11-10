@@ -97,6 +97,31 @@ export function messagePage(message) {
 }
 
 /**
+ * The page an invite link opens: a button that redeems it (no scripts).
+ * @param {string} projectName
+ * @param {string} token
+ * @returns {string}
+ */
+export function invitePage(projectName, token) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join ${escapeHtml(projectName)} · LiveReview</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<p>You have been invited to review <strong>${escapeHtml(projectName)}</strong> on LiveReview.</p>
+<form method="post" action="/invite/${encodeURIComponent(token)}">
+<button type="submit">Continue</button>
+</form>
+</body>
+</html>
+`;
+}
+
+/**
  * Response for a page request without a viewer: public → /login, admin → 401 message.
  * @param {RouteContext} ctx
  */
@@ -159,14 +184,29 @@ export function registerPages(router, { projects, sessions, now }) {
   router.add('GET', '/static/*', serveStatic('static'), { auth: false });
   router.add('GET', '/vendor/diff2html/*', serveStatic('vendor'), { auth: false });
 
+  const INVITE_GONE = 'This invite link is no longer valid.';
+  // Opening the link only shows a page: link previewers and mail scanners fetch it too, and must not use up
+  // the single-use token. The invite is redeemed by the page's form, a POST that passes the Origin check.
   router.add(
     'GET',
+    '/invite/:token',
+    ({ res, params }) => {
+      const invite = projects.peekInvite(params.token, now());
+      const project = invite && projects.get(invite.projectId);
+      if (!invite || !project) sendHtml(res, 410, messagePage(INVITE_GONE));
+      else sendHtml(res, 200, invitePage(project.name, params.token));
+    },
+    { auth: false, only: 'public' },
+  );
+
+  router.add(
+    'POST',
     '/invite/:token',
     ({ res, params }) => {
       const redeemed = projects.redeemInvite(params.token, now());
       const project = redeemed && projects.get(redeemed.projectId);
       if (!redeemed || !project) {
-        sendHtml(res, 410, messagePage('This invite link is no longer valid.'));
+        sendHtml(res, 410, messagePage(INVITE_GONE));
         return;
       }
       res.setHeader('Set-Cookie', sessionCookie(sessions.create(redeemed.email, now())));

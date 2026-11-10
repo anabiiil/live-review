@@ -188,6 +188,19 @@ test('invite: redeem works once, second redeem is null', async () => {
   });
 });
 
+test('invite: peek has no side effects and agrees with redeem', async () => {
+  await withStore(1, async ({ store, repos }) => {
+    const p = await store.add({ path: repos[0].dir, name: 'One' });
+    const token = store.createInvite(p.id, 'a@x.com', 1000);
+    assert.deepEqual(store.peekInvite(token, 2000), { email: 'a@x.com', projectId: p.id });
+    assert.deepEqual(store.peekInvite(token, 2000), { email: 'a@x.com', projectId: p.id });
+    assert.equal(store.peekInvite('garbage', 2000), null);
+    assert.equal(store.peekInvite(token, 1000 + 7 * DAY), null, 'expired');
+    assert.deepEqual(store.redeemInvite(token, 3000), { email: 'a@x.com', projectId: p.id });
+    assert.equal(store.peekInvite(token, 4000), null, 'used');
+  });
+});
+
 test('invite: only the SHA-256 hash is stored', async () => {
   await withStore(1, async ({ db, store, repos }) => {
     const p = await store.add({ path: repos[0].dir, name: 'One' });

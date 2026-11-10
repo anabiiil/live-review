@@ -82,7 +82,7 @@ async function addAndSignIn(projectId, email) {
   const res = await adm(`/api/admin/projects/${projectId}/members`, { method: 'POST', body: { email } });
   assert.equal(res.status, 200, res.body);
   const link = res.json().inviteLink;
-  const redeem = await request(ctx.ports.publicPort, { path: `/invite/${link.slice(link.lastIndexOf('/') + 1)}`, headers: { Host: HOST } });
+  const redeem = await request(ctx.ports.publicPort, { method: 'POST', path: `/invite/${link.slice(link.lastIndexOf('/') + 1)}`, headers: { Host: HOST, Origin: PUBLIC_ORIGIN } });
   assert.equal(redeem.status, 302);
   return `lr_session=${redeem.cookies.lr_session}`;
 }

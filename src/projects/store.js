@@ -264,6 +264,21 @@ export function createProjectStore(db) {
     },
 
     /**
+     * Look an invite up without using it (no side effects).
+     * @param {string} token
+     * @param {number} now epoch ms
+     * @returns {{email:string, projectId:number}|null} null unless it is unused, unexpired and its membership exists
+     */
+    peekInvite(token, now) {
+      if (typeof token !== 'string' || token === '') return null;
+      const row = q.findInvite.get(hashToken(token), now);
+      if (!row) return null;
+      const email = String(row.email);
+      const projectId = Number(row.project_id);
+      return isMember(projectId, email) ? { email, projectId } : null;
+    },
+
+    /**
      * @param {string} token
      * @param {number} now epoch ms
      * @returns {{email:string, projectId:number}|null}

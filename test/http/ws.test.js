@@ -81,7 +81,7 @@ async function addAndSignIn(projectId, email) {
   const res = await adm(`/api/admin/projects/${projectId}/members`, { method: 'POST', body: { email } });
   assert.equal(res.status, 200, res.body);
   const link = res.json().inviteLink;
-  const redeem = await pub(`/invite/${link.slice(link.lastIndexOf('/') + 1)}`);
+  const redeem = await pub(`/invite/${link.slice(link.lastIndexOf('/') + 1)}`, { method: 'POST' });
   assert.equal(redeem.status, 302);
   return `lr_session=${redeem.cookies.lr_session}`;
 }

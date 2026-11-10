@@ -97,7 +97,7 @@ const tokenOf = (link) => link.slice(link.lastIndexOf('/') + 1);
 async function addAndSignIn(projectId, email) {
   const res = await adm(`/api/admin/projects/${projectId}/members`, { method: 'POST', body: { email } });
   assert.equal(res.status, 200, res.body);
-  const redeem = await pub(`/invite/${tokenOf(res.json().inviteLink)}`);
+  const redeem = await pub(`/invite/${tokenOf(res.json().inviteLink)}`, { method: 'POST' });
   assert.equal(redeem.status, 302);
   return `lr_session=${redeem.cookies.lr_session}`;
 }
@@ -482,14 +482,14 @@ test('add member returns an invite link that redeems on the public listener and 
   assert.ok(ctx.sent[0].subject.includes('Invite Me'));
   assert.ok(ctx.sent[0].subject.includes('Olivia'));
 
-  const redeem = await pub(`/invite/${tokenOf(out.inviteLink)}`);
+  const redeem = await pub(`/invite/${tokenOf(out.inviteLink)}`, { method: 'POST' });
   assert.equal(redeem.status, 302);
   assert.equal(redeem.headers.location, '/invite-me');
   const projectsRes = await pub('/api/projects', { cookie: `lr_session=${redeem.cookies.lr_session}` });
   assert.equal(projectsRes.status, 200);
   assert.deepEqual(projectsRes.json().map((/** @type {{slug:string}} */ p) => p.slug), ['invite-me']);
   // Single use.
-  assert.equal((await pub(`/invite/${tokenOf(out.inviteLink)}`)).status, 410);
+  assert.equal((await pub(`/invite/${tokenOf(out.inviteLink)}`, { method: 'POST' })).status, 410);
 
   // Adding the same member again is idempotent (one membership, a fresh link).
   const again = await adm(`/api/admin/projects/${project.id}/members`, { method: 'POST', body: { email: 'rita@example.com' } });
@@ -506,14 +506,14 @@ test('email failure still returns 200 with a working link', async () => {
     const out = res.json();
     assert.equal(out.emailSent, false);
     assert.equal(out.emailError, 'Resend 500: boom');
-    assert.equal((await pub(`/invite/${tokenOf(out.inviteLink)}`)).status, 302);
+    assert.equal((await pub(`/invite/${tokenOf(out.inviteLink)}`, { method: 'POST' })).status, 302);
 
     ctx.mail.mode = 'throw';
     const thrown = await adm(`/api/admin/projects/${project.id}/members`, { method: 'POST', body: { email: 'g@example.com' } });
     assert.equal(thrown.status, 200);
     assert.equal(thrown.json().emailSent, false);
     assert.equal(thrown.json().emailError, 'network down');
-    assert.equal((await pub(`/invite/${tokenOf(thrown.json().inviteLink)}`)).status, 302);
+    assert.equal((await pub(`/invite/${tokenOf(thrown.json().inviteLink)}`, { method: 'POST' })).status, 302);
   } finally {
     ctx.mail.mode = 'ok';
   }
@@ -550,8 +550,8 @@ test('regenerate invalidates the old link, resends the email and needs an existi
   assert.equal(ctx.sent.length, 1);
   assert.ok(ctx.sent[0].text.includes(second.inviteLink));
 
-  assert.equal((await pub(`/invite/${tokenOf(first.inviteLink)}`)).status, 410);
-  assert.equal((await pub(`/invite/${tokenOf(second.inviteLink)}`)).status, 302);
+  assert.equal((await pub(`/invite/${tokenOf(first.inviteLink)}`, { method: 'POST' })).status, 410);
+  assert.equal((await pub(`/invite/${tokenOf(second.inviteLink)}`, { method: 'POST' })).status, 302);
 
   const stranger = await adm(`/api/admin/projects/${project.id}/members/stranger%40example.com/invite`, { method: 'POST', body: {} });
   assert.equal(stranger.status, 404);
@@ -579,7 +579,7 @@ test('removing the last membership revokes the reviewer session; other membershi
   assert.deepEqual(still.json().map((/** @type {{slug:string}} */ p) => p.slug), ['revoke-two']);
   assert.equal((await pub('/api/p/revoke-one/live', { cookie })).status, 404);
   // The removed member's pending invite is dead.
-  assert.equal((await pub(`/invite/${tokenOf(pending.inviteLink)}`)).status, 410);
+  assert.equal((await pub(`/invite/${tokenOf(pending.inviteLink)}`, { method: 'POST' })).status, 410);
 
   const last = await adm(`/api/admin/projects/${p2.id}/members/${encodeURIComponent(email)}`, { method: 'DELETE' });
   assert.equal(last.status, 200);

@@ -35,7 +35,7 @@ async function setup() {
   const project = await app.services.projects.add({ path: repo.dir, name: 'Sample' });
   app.services.projects.addMember(project.id, 'alice@example.com');
   const token = app.services.projects.createInvite(project.id, 'alice@example.com', Date.now());
-  const res = await request(ports.publicPort, { path: `/invite/${token}`, headers: { Host: HOST } });
+  const res = await request(ports.publicPort, { method: 'POST', path: `/invite/${token}`, headers: { Host: HOST, Origin: `https://${HOST}` } });
   return { dataDir, db, app, ports, repo, sha, cookie: `lr_session=${res.cookies.lr_session}` };
 }
 
