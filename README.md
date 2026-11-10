@@ -16,7 +16,8 @@ Reviewers can see:
 
 Reviewers never see:
 
-- files that git ignores
+- files that git ignores, including files that are tracked but match `.gitignore` (in the live view and the file
+  list; commit history only applies the hidden list below)
 - the hidden list (below), in the live view, in every commit in the history, in file lists and in comment anchors
 - your home folder or anything outside the projects you added
 - anything outside git's own view of the folder (submodule contents are not shown, symlinks pointing outside the
@@ -87,6 +88,9 @@ cloudflared tunnel route dns livereview review.example.com
 ```
 
 If `winget` offers an older Node.js, download Node.js 24 or newer from https://nodejs.org instead.
+
+`git.exe` itself must be on PATH (the Git for Windows installer does this by default). LiveReview starts git without
+a shell, so a `git.cmd` or `git.bat` wrapper alone is not enough.
 
 ## Running
 

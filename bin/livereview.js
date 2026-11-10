@@ -54,10 +54,15 @@ if (process.env.LIVEREVIEW_NO_BROWSER !== '1') openBrowser(adminUrl);
 /** @type {import('node:child_process').ChildProcess|null} */
 let tunnel = null;
 let shuttingDown = false;
-void startTunnel({ tunnelName: config.tunnelName, publicPort: ports.publicPort }).then((child) => {
-  tunnel = child;
-  if (shuttingDown) stopTunnel(child);
-});
+startTunnel({ tunnelName: config.tunnelName, publicPort: ports.publicPort })
+  .then((child) => {
+    tunnel = child;
+    if (shuttingDown) stopTunnel(child);
+  })
+  .catch((err) => {
+    // LiveReview keeps running without the public link; the admin page still works.
+    console.error(`cloudflared could not be started: ${err instanceof Error ? err.message : String(err)}`);
+  });
 // Whatever way we leave, cloudflared does not outlive LiveReview.
 process.on('exit', () => stopTunnel(tunnel));
 
@@ -75,6 +80,7 @@ async function shutdown() {
   process.exit(0);
 }
 
-for (const signal of process.platform === 'win32' ? ['SIGINT', 'SIGTERM', 'SIGBREAK'] : ['SIGINT', 'SIGTERM']) {
+// SIGHUP: the terminal was closed (on Windows: the console window was closed).
+for (const signal of process.platform === 'win32' ? ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] : ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, () => void shutdown());
 }
