@@ -100,7 +100,7 @@ export function createChrome(ctx, { project, projects = [], tab } = {}) {
             'a',
             { class: 'menu-item', role: 'menuitem', href: `/${encodeURIComponent(p.slug)}/live`, 'data-link': '', 'aria-current': p.slug === project.slug ? 'page' : null },
             h('span', { class: 'menu-text', dir: 'auto', text: p.name }),
-            p.open ? h('span', { class: 'mark-count', 'aria-label': `${p.open} open`, text: openCount(p.open) }) : null,
+            p.open ? h('span', { class: 'mark-count' }, openCount(p.open), h('span', { class: 'visually-hidden', text: ' open' })) : null,
           ),
         ),
         h('div', { class: 'menu-sep', role: 'separator' }),
@@ -128,9 +128,9 @@ export function createChrome(ctx, { project, projects = [], tab } = {}) {
   const count = h('span', { class: 'mark-count tab-count', hidden: '' });
   /** @param {number} n */
   const setOpen = (n) => {
-    count.textContent = openCount(n);
+    // Read out as "N open": aria-label is not reliably read on a span.
+    setChildren(count, openCount(n), h('span', { class: 'visually-hidden', text: ' open' }));
     count.hidden = !n;
-    count.setAttribute('aria-label', `${n} open`);
   };
   setOpen(project?.open ?? 0);
   /** @param {Tab} id @param {string} href @param {string} text @param {any} [extra] */

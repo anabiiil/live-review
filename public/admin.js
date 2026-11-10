@@ -37,11 +37,17 @@ onUnauthorized(() => {
   setChildren(host, h('div', { class: 'page' }, messageBox('Not signed in', ADMIN_UNAUTHORIZED)));
 });
 
+/**
+ * The tab count's content: the number, read out as "N open" (aria-label is not reliably read on a span).
+ * @param {number} n
+ */
+const countText = (n) => (n ? [String(n), h('span', { class: 'visually-hidden', text: ' open' })] : []);
+
 /** @param {number} n open threads across projects */
 function setOpenCount(n) {
   openCount = n;
   if (countBadge) {
-    countBadge.textContent = n ? String(n) : '';
+    setChildren(countBadge, ...countText(n));
     countBadge.hidden = n === 0;
   }
 }
@@ -56,7 +62,7 @@ function header() {
             'a',
             { href: `#${id}`, 'aria-current': tabFromHash(location.hash) === id ? 'page' : null },
             label,
-            id === 'comments' ? (countBadge = h('span', { class: 'mark-count tab-count', 'aria-label': 'open comments', hidden: openCount === 0 ? '' : null, text: openCount ? String(openCount) : '' })) : null,
+            id === 'comments' ? (countBadge = h('span', { class: 'mark-count tab-count', hidden: openCount === 0 ? '' : null }, ...countText(openCount))) : null,
           ),
         ),
       )
