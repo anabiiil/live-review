@@ -326,6 +326,23 @@ test('a socket whose session ended (logout; expiry uses the same lookup) is clos
   }
 });
 
+test('renaming a project slug tells its subscribers where it moved; subscribing under the new slug resends the state', async () => {
+  const { project } = await newProject('Moving');
+  const cookie = await addAndSignIn(project.id, 'mover@example.com');
+  const ws = await connect('public', { cookie });
+  ws.send({ type: 'subscribe', slug: project.slug });
+  await ws.waitFor((m) => m.type === 'live');
+  const res = await adm(`/api/admin/projects/${project.id}`, { method: 'PATCH', body: { slug: 'moved-here' } });
+  assert.equal(res.status, 200, res.body);
+  assert.deepEqual(await ws.waitFor((m) => m.type === 'moved'), { type: 'moved', slug: project.slug, to: 'moved-here' });
+  ws.messages.length = 0;
+  ws.send({ type: 'unsubscribe', slug: project.slug });
+  ws.send({ type: 'subscribe', slug: 'moved-here' });
+  const live = await ws.waitFor((m) => m.type === 'live' && m.slug === 'moved-here');
+  assert.ok(live.files.some((/** @type {any} */ f) => f.path === 'a.js'));
+  assert.ok(!ws.messages.some((m) => m.type === 'live' && m.slug !== 'moved-here'), 'no state under the old slug');
+});
+
 test('unsubscribe and close release the watcher reference', async () => {
   const { project } = await newProject('Release');
   const pool = ctx.app.services.watcherPool;

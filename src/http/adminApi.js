@@ -314,6 +314,7 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
       for (const key of Object.keys(body)) if (!['name', 'slug', 'extraHidden'].includes(key)) throw invalid(`unknown field: ${key}`);
       const { name, slug, extraHidden } = body;
       const updated = projects.update(before.id, { name, slug, extraHidden });
+      if (updated.slug !== before.slug) events.emit('project-moved', { projectId: updated.id, from: before.slug, to: updated.slug });
       // Idempotent, so it runs whenever the list is sent: a wipe cut short earlier is completed now.
       if (extraHidden !== undefined) {
         comments.wipeHidden(updated.id, (path) => isHidden(path, updated.extraHidden));

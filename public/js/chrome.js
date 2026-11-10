@@ -101,7 +101,11 @@ export function createChrome(ctx, { project, tab } = {}) {
         if (e.type === 'close') offline.hidden = false;
         else if (e.type === 'open') offline.hidden = true;
         else if (e.slug !== project.slug) return;
-        else if (e.type === 'revoked') stop('Your access to this project was removed');
+        else if (e.type === 'moved' && typeof e.to === 'string') {
+          // The owner renamed the project's address: show the same view under the new one.
+          const rest = location.pathname.split('/').slice(2).join('/');
+          ctx.navigate(`/${encodeURIComponent(e.to)}/${rest}${location.search}${location.hash}`, { replace: true });
+        } else if (e.type === 'revoked') stop('Your access to this project was removed');
         else if (e.type === 'error' && e.error === 'project-unavailable') {
           errorBanner = setBanner(errorBanner, "This project isn't available right now", 'error');
         } else if (e.type === 'live') errorBanner = setBanner(errorBanner, null, 'error');

@@ -109,6 +109,11 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
     pipeline.drop(e.projectId);
   });
   on('project-changed', (/** @type {{projectId:number}} */ e) => void pipeline.recompute(e.projectId));
+  on('project-moved', (/** @type {{projectId:number, from:string, to:string}} */ e) => {
+    hub.moveProject(e.projectId, e.from, e.to);
+    // The last live state still names the old slug.
+    void pipeline.recompute(e.projectId);
+  });
   on('comment-changed', (/** @type {import('./http/ws.js').CommentChange} */ e) => hub.commentChanged(e));
 
   /** @type {{projects:typeof projects, comments:typeof comments, codes:typeof codes, sessions:typeof sessions,
@@ -201,7 +206,8 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
     services,
     /**
      * Emits `member-removed` ({projectId, email}) when the owner removes a member (or deletes a project),
-     * `project-removed` ({projectId}), `project-changed` ({projectId}) and `comment-changed` (see ws.js).
+     * `project-removed` ({projectId}), `project-changed` ({projectId}), `project-moved` ({projectId, from, to})
+     * and `comment-changed` (see ws.js).
      */
     events,
 

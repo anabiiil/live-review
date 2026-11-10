@@ -100,7 +100,15 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
   async function subscribe(c, slug) {
     if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return;
     const p = projects.bySlug(slug);
-    if (!p || !projects.canView(c.viewer, p.id) || c.subs.has(p.id)) return;
+    if (!p || !projects.canView(c.viewer, p.id)) return;
+    const existing = c.subs.get(p.id);
+    if (existing) {
+      // Already subscribed (e.g. the page was reopened under the project's new slug): send the state again.
+      if (!existing.ready) return;
+      const msg = await snapshot(p.id, { refresh: false });
+      if (msg && c.subs.get(p.id) === existing && clients.has(c)) send(c, msg);
+      return;
+    }
     /** @type {Subscription} */
     const sub = { projectId: p.id, slug: p.slug, ready: false, acquired: false };
     c.subs.set(p.id, sub);
@@ -263,6 +271,21 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
       }
       if (projects.projectsFor({ kind: 'reviewer', email: e, name: null }).length === 0) {
         for (const c of mine) c.ws.close(1008, 'revoked');
+      }
+    },
+
+    /**
+     * The project's slug changed: its subscribers are told where it moved, and their subscriptions follow it.
+     * @param {number} projectId
+     * @param {string} from the old slug
+     * @param {string} to the new slug
+     */
+    moveProject(projectId, from, to) {
+      for (const c of clients) {
+        const sub = c.subs.get(projectId);
+        if (!sub) continue;
+        sub.slug = to;
+        send(c, { type: 'moved', slug: from, to });
       }
     },
 
