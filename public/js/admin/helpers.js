@@ -170,13 +170,46 @@ export function parsePatterns(text) {
 export const patternsText = (list) => list.join('\n');
 
 /**
- * First line of a comment, cut to `max` characters.
- * @param {string} body
- * @param {number} [max]
+ * Same normalisation as the server's normalizeEmail (src/db.js): trim and lowercase.
+ * @param {string} s
  */
-export function excerpt(body, max = 140) {
-  const first = String(body).split('\n', 1)[0].trim();
-  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
+export const normalizeEmail = (s) => String(s).trim().toLowerCase();
+
+/**
+ * Text typed into fields that live-refreshes rebuild. Pure state; the view wires it to the DOM.
+ * `values` by draft key (data-draft), plus the field that had focus with its selection.
+ * @typedef {{values:Map<string,string>, focus:{key:string, start:number|null, end:number|null}|null}} DraftState
+ */
+
+/** @returns {DraftState} */
+export const createDraftState = () => ({ values: new Map(), focus: null });
+
+/** @param {DraftState} d @param {string} key @param {string} value */
+export const setDraft = (d, key, value) => void d.values.set(key, value);
+
+/**
+ * The draft for `key`, or `initial` when nothing was typed.
+ * @param {DraftState} d @param {string} key @param {string} [initial]
+ */
+export const getDraft = (d, key, initial = '') => d.values.get(key) ?? initial;
+
+/**
+ * Forget the drafts whose key equals `prefix` or starts with `prefix:` (a form was saved or cancelled).
+ * @param {DraftState} d @param {string} prefix
+ */
+export function dropDrafts(d, prefix) {
+  for (const k of [...d.values.keys()]) if (k === prefix || k.startsWith(`${prefix}:`)) d.values.delete(k);
+  if (d.focus && (d.focus.key === prefix || d.focus.key.startsWith(`${prefix}:`))) d.focus = null;
+}
+
+/** @param {DraftState} d @param {{key:string, start:number|null, end:number|null}|null} focus */
+export const rememberFocus = (d, focus) => void (d.focus = focus);
+
+/** The remembered focus, once. @param {DraftState} d */
+export function takeFocus(d) {
+  const f = d.focus;
+  d.focus = null;
+  return f;
 }
 
 /**

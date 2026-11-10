@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   setupSteps, errorMessage, configError, missingFields, inviteStatus, unreadTitle, notificationTitle, internalUrl,
-  threadHref, countByProject, parsePatterns, excerpt, tabFromHash,
+  threadHref, countByProject, parsePatterns, tabFromHash, normalizeEmail,
+  createDraftState, setDraft, getDraft, dropDrafts, rememberFocus, takeFocus,
 } from '../../public/js/admin/helpers.js';
 
 test('setupSteps: six steps, exact commands, values substituted', () => {
@@ -89,9 +90,40 @@ test('parsePatterns trims, drops blanks and duplicates', () => {
   assert.deepEqual(parsePatterns(''), []);
 });
 
-test('excerpt: first line, cut with an ellipsis', () => {
-  assert.equal(excerpt('hello\nworld'), 'hello');
-  assert.equal(excerpt('x'.repeat(200), 10), 'xxxxxxxxx…');
+test('normalizeEmail matches the server: trim and lowercase', () => {
+  assert.equal(normalizeEmail('  Alice@Example.COM '), 'alice@example.com');
+});
+
+test('drafts: values survive until dropped; initial is the fallback', () => {
+  const d = createDraftState();
+  assert.equal(getDraft(d, 'edit-name:1', 'Sample'), 'Sample');
+  setDraft(d, 'edit-name:1', 'Renamed');
+  setDraft(d, 'edit-slug:1', 'x');
+  setDraft(d, 'member:1', 'bob@');
+  setDraft(d, 'member:12', 'keep');
+  assert.equal(getDraft(d, 'edit-name:1', 'Sample'), 'Renamed');
+  setDraft(d, 'edit-name:1', '');
+  assert.equal(getDraft(d, 'edit-name:1', 'Sample'), '', 'an emptied field stays empty');
+});
+
+test('drafts: dropDrafts removes exactly one form by key prefix', () => {
+  const d = createDraftState();
+  setDraft(d, 'edit:1:name', 'a');
+  setDraft(d, 'edit:1:slug', 'b');
+  setDraft(d, 'edit:12:name', 'c');
+  setDraft(d, 'member:1', 'd');
+  rememberFocus(d, { key: 'edit:1:slug', start: 1, end: 1 });
+  dropDrafts(d, 'edit:1');
+  assert.deepEqual([...d.values.keys()].sort(), ['edit:12:name', 'member:1']);
+  assert.equal(d.focus, null);
+});
+
+test('drafts: focus is remembered and handed out once; unrelated focus survives a drop', () => {
+  const d = createDraftState();
+  rememberFocus(d, { key: 'member:1', start: 3, end: 5 });
+  dropDrafts(d, 'edit:1');
+  assert.deepEqual(takeFocus(d), { key: 'member:1', start: 3, end: 5 });
+  assert.equal(takeFocus(d), null);
 });
 
 test('tabFromHash defaults to projects', () => {

@@ -13,12 +13,14 @@ const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your termin
 const TABS = /** @type {const} */ ([['projects', 'Projects'], ['inbox', 'Inbox'], ['settings', 'Settings']]);
 
 const socket = createSocket();
-const notifier = createNotifier({ socket, onNotify: () => view?.refresh?.() });
+const notifier = createNotifier({ socket });
 
 /** @type {import('./js/admin/settings.js').AdminConfig|null} */
 let config = null;
 let me = /** @type {{email:string, name:string|null, kind:'owner'|'reviewer'}|null} */ (null);
 let inboxCount = 0;
+/** Whether the page was drawn as the setup screen (the config object is shared with the form, so compare against this). */
+let shownSetup = false;
 /** @type {{destroy:()=>void, refresh?:()=>Promise<void>}|null} */
 let view = null;
 /** @type {HTMLElement|null} */
@@ -77,19 +79,20 @@ function render() {
   const main = h('main', { id: 'main' });
   setChildren(host, h('div', { class: 'page' }, header(), main));
   const setup = !config.configured;
+  shownSetup = setup;
   const tab = setup ? 'settings' : tabFromHash(location.hash);
   if (tab === 'settings') {
-    const wasConfigured = config.configured;
     const el = settingsView({
       config, setup,
       onSaved: (next) => {
         config = /** @type {any} */ (next);
         const link = document.getElementById('public-link');
         if (link instanceof HTMLAnchorElement && next.publicHost) link.href = `https://${next.publicHost}`;
-        // Leaving setup (or dropping back into it) changes the whole page; a plain save does not.
-        if (/** @type {any} */ (next).configured !== wasConfigured) {
-          if (next.configured) location.hash = '#projects';
-          render();
+        // Finishing setup swaps the page for the tabs. Removing the key later does not: Settings stays up
+        // with its notice. Changing the hash redraws through hashchange; if it is already there, draw directly.
+        if (shownSetup && next.configured) {
+          if (location.hash === '#projects') render();
+          else location.hash = '#projects';
         }
       },
     });
@@ -104,6 +107,16 @@ function render() {
     setChildren(main, v.root);
     view = v;
   }
+}
+
+/** After a notify or a reconnect: bring the current tab up to date, fetching the inbox once. */
+function refreshCurrent() {
+  if (view?.refresh && tabFromHash(location.hash) === 'inbox') {
+    view.refresh();
+    return;
+  }
+  refreshInboxCount();
+  view?.refresh?.();
 }
 
 async function refreshInboxCount() {
@@ -124,8 +137,15 @@ async function start() {
   }
   render();
   if (config?.configured) refreshInboxCount();
+  let opened = false;
   socket.on((e) => {
-    if (e.type === 'open' || e.type === 'notify') refreshInboxCount();
+    if (!config?.configured) return;
+    if (e.type === 'notify') refreshCurrent();
+    else if (e.type === 'open') {
+      // The first open follows the initial load; a later one is a reconnect that may have missed events.
+      if (opened) refreshCurrent();
+      opened = true;
+    }
   });
   socket.start();
 }

@@ -5,9 +5,9 @@ import { internalUrl, notificationTitle, unreadTitle } from './helpers.js';
 const supported = () => typeof Notification !== 'undefined';
 
 /**
- * @param {{socket:ReturnType<typeof import('../ws.js').createSocket>, onNotify?:()=>void}} o
+ * @param {{socket:ReturnType<typeof import('../ws.js').createSocket>}} o
  */
-export function createNotifier({ socket, onNotify }) {
+export function createNotifier({ socket }) {
   let unread = 0;
   const showTitle = () => {
     document.title = unreadTitle(unread);
@@ -45,7 +45,6 @@ export function createNotifier({ socket, onNotify }) {
   const off = socket.on((e) => {
     if (e.type !== 'notify') return;
     show(e);
-    onNotify?.();
   });
 
   /** The "Enable desktop notifications" control; hides itself once permission is granted. */

@@ -97,6 +97,9 @@ export function settingsView({ config, setup, onSaved }) {
     await busy(removeKey, 'Removing…', async () => {
       try {
         const r = await api('PUT', '/api/admin/config', { resendApiKey: null });
+        notice.textContent = 'Email is off until you add a key';
+        notice.hidden = false;
+        saved.textContent = '';
         adopt(r.config);
       } catch (err) {
         formError.textContent = configError(/** @type {any} */ (err)).message;

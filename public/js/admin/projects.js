@@ -1,7 +1,7 @@
 // Projects tab: list, add (path -> preview -> confirm), edit, remove, members and invite links.
 import { del, get, patch, post } from '../api.js';
 import { h, messageBox, setChildren } from '../dom.js';
-import { errorMessage, inviteStatus, parsePatterns, patternsText } from './helpers.js';
+import { createDraftState, dropDrafts, errorMessage, getDraft, inviteStatus, normalizeEmail, parsePatterns, patternsText, rememberFocus, setDraft, takeFocus } from './helpers.js';
 import { busy, confirmDialog, copyField, field } from './widgets.js';
 
 /**
@@ -9,6 +9,20 @@ import { busy, confirmDialog, copyField, field } from './widgets.js';
  * @typedef {{id:number, slug:string, name:string, path:string, extraHidden:string[], open:number, members:Member[]}} Project
  * @typedef {{inviteLink:string, emailSent:boolean, emailError?:string}} Invite
  */
+
+/**
+ * Keep a control's text in the draft state so a live refresh that rebuilds the card restores it.
+ * @param {import('./helpers.js').DraftState} drafts
+ * @param {HTMLElement} control
+ * @param {string} key
+ * @param {string} [initial]
+ */
+function bindDraft(drafts, control, key, initial = '') {
+  const el = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (control);
+  el.dataset.draft = key;
+  el.value = getDraft(drafts, key, initial);
+  el.addEventListener('input', () => setDraft(drafts, key, el.value));
+}
 
 /**
  * A scrollable file list with a heading.
@@ -102,9 +116,9 @@ function addProjectForm({ onAdded }) {
 /**
  * Edit panel of one project: name, address name, extra hidden patterns.
  * @param {Project} p
- * @param {{onSaved:()=>void, onCancel:()=>void}} o
+ * @param {{drafts:import('./helpers.js').DraftState, onSaved:()=>void, onCancel:()=>void}} o
  */
-function editForm(p, { onSaved, onCancel }) {
+function editForm(p, { drafts, onSaved, onCancel }) {
   const name = field(`ed-name-${p.id}`, 'Project name', h('input', { type: 'text', value: p.name, dir: 'auto' }));
   const slug = field(`ed-slug-${p.id}`, 'Address name', h('input', { type: 'text', value: p.slug, dir: 'ltr', autocapitalize: 'off', spellcheck: 'false' }), {
     hint: 'Changing it breaks links you already shared.',
@@ -112,7 +126,9 @@ function editForm(p, { onSaved, onCancel }) {
   const hidden = field(`ed-hidden-${p.id}`, 'Extra hidden files', h('textarea', { rows: 4, dir: 'ltr', spellcheck: 'false', placeholder: '*.log\nnotes.md' }), {
     hint: 'One file name or pattern per line, matched against the file name. Secret-looking files are always hidden.',
   });
-  /** @type {HTMLTextAreaElement} */ (hidden.control).value = patternsText(p.extraHidden);
+  bindDraft(drafts, name.control, `edit:${p.id}:name`, p.name);
+  bindDraft(drafts, slug.control, `edit:${p.id}:slug`, p.slug);
+  bindDraft(drafts, hidden.control, `edit:${p.id}:hidden`, patternsText(p.extraHidden));
   const error = h('p', { class: 'form-error', role: 'alert' });
   const save = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'submit', text: 'Save' }));
   const form = h(
@@ -163,6 +179,7 @@ export function projectsView({ onChanged }) {
   const invites = new Map();
   /** @type {Set<number>} */
   const editing = new Set();
+  const drafts = createDraftState();
   /** @type {Project[]} */
   let projects = [];
   let alive = true;
@@ -181,7 +198,7 @@ export function projectsView({ onChanged }) {
   /** @param {Project} p */
   function memberRow(p) {
     return (/** @param {Member} m */ (m) => {
-      const key = `${p.id}:${m.email}`;
+      const key = `${p.id}:${normalizeEmail(m.email)}`;
       const invite = invites.get(key);
       const error = h('p', { class: 'form-error', role: 'alert' });
       const regen = /** @type {HTMLButtonElement} */ (h('button', { class: 'link', type: 'button', text: 'New invite link' }));
@@ -225,6 +242,7 @@ export function projectsView({ onChanged }) {
   /** @param {Project} p */
   function addMemberForm(p) {
     const email = h('input', { type: 'email', autocomplete: 'off', placeholder: 'reviewer@example.com', 'aria-label': `Add a reviewer to ${p.name}`, dir: 'ltr' });
+    bindDraft(drafts, email, `member:${p.id}`);
     const error = h('p', { class: 'form-error', role: 'alert' });
     const add = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn', type: 'submit', text: 'Add and get link' }));
     const form = h('form', { class: 'add-member', novalidate: '' }, h('div', { class: 'inline-form' }, email, add), error);
@@ -236,7 +254,8 @@ export function projectsView({ onChanged }) {
       await busy(add, 'Adding…', async () => {
         try {
           const r = await post(`/api/admin/projects/${p.id}/members`, { email: value });
-          invites.set(`${p.id}:${value.toLowerCase()}`, r);
+          invites.set(`${p.id}:${normalizeEmail(value)}`, r);
+          dropDrafts(drafts, `member:${p.id}`);
           await reload();
         } catch (err) {
           error.textContent = errorMessage(/** @type {any} */ (err));
@@ -281,8 +300,10 @@ export function projectsView({ onChanged }) {
         h('button', {
           class: 'link', type: 'button', text: 'Edit',
           onclick: () => {
-            if (editing.has(p.id)) editing.delete(p.id);
-            else editing.add(p.id);
+            if (editing.has(p.id)) {
+              editing.delete(p.id);
+              dropDrafts(drafts, `edit:${p.id}`);
+            } else editing.add(p.id);
             draw();
           },
         }),
@@ -292,12 +313,15 @@ export function projectsView({ onChanged }) {
       h('p', { class: 'path', dir: 'ltr', text: p.path }),
       isEditing
         ? editForm(p, {
+            drafts,
             onSaved: () => {
               editing.delete(p.id);
+              dropDrafts(drafts, `edit:${p.id}`);
               reload();
             },
             onCancel: () => {
               editing.delete(p.id);
+              dropDrafts(drafts, `edit:${p.id}`);
               draw();
             },
           })
@@ -310,10 +334,32 @@ export function projectsView({ onChanged }) {
     );
   }
 
+  /** Rebuild the list. Typed text comes back from `drafts`; the focused field and its caret are restored. */
   function draw() {
-    // A re-render keeps text typed into member / edit fields of other cards only if they were not rebuilt; the
-    // list is rebuilt after real changes only, so drafts are not at risk in normal use.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.dataset.draft && listHost.contains(active)) {
+      const field = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (active);
+      let start = null;
+      let end = null;
+      try {
+        start = field.selectionStart;
+        end = field.selectionEnd;
+      } catch {
+        /* type=email inputs have no selection API */
+      }
+      rememberFocus(drafts, { key: active.dataset.draft, start, end });
+    }
     setChildren(listHost, projects.length ? projects.map(card) : messageBox('No projects yet', 'Add the top folder of a git repository above.'));
+    const focus = takeFocus(drafts);
+    if (!focus) return;
+    const el = [...listHost.querySelectorAll('[data-draft]')].find((e) => e instanceof HTMLElement && e.dataset.draft === focus.key);
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+    el.focus();
+    try {
+      if (focus.start !== null && focus.end !== null) el.setSelectionRange(focus.start, focus.end);
+    } catch {
+      /* no selection API on this input type */
+    }
   }
 
   setChildren(root, addProjectForm({ onAdded: reload }), listHost);
