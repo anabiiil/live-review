@@ -8,7 +8,7 @@ import { openCount, projectActivity, projectRowMeta } from '../shell-model.js';
  * @param {HTMLElement} host
  */
 export function projectsView(ctx, host) {
-  document.title = 'Projects · LiveReview';
+  document.title = 'Projects - LiveReview';
   const chrome = createChrome(ctx);
   setChildren(host, chrome.root);
   setChildren(chrome.main, h('p', { class: 'muted pad', text: 'Loading…' }));

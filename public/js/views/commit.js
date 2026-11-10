@@ -33,7 +33,7 @@ export function commitBody({ ctx, chrome, project }, sha) {
     ({ commit, files }) => {
       if (!alive || chrome.stopped) return;
       fullSha = commit.sha;
-      document.title = `${splitMessage(commit.message).subject} · ${project.name} · LiveReview`;
+      document.title = `${splitMessage(commit.message).subject} - ${project.name} - LiveReview`;
       const { subject, rest } = splitMessage(commit.message);
       const root = h('div', { class: 'review' });
       const parents = /** @type {string[]} */ (commit.parents);

@@ -11,7 +11,7 @@ const NO_REDIRECT = { auth: false };
  * @param {HTMLElement} host
  */
 export function loginView(ctx, host) {
-  document.title = 'Sign in · LiveReview';
+  document.title = 'Sign in - LiveReview';
   let email = '';
   const card = h('div', { class: 'card login' });
   setChildren(

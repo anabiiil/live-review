@@ -37,7 +37,7 @@ export function projectPage(ctx, host, slug, tab, build) {
     plain.destroy();
     chrome = createChrome(ctx, { project, projects: list, tab });
     setChildren(host, chrome.root);
-    document.title = `${project.name} · LiveReview`;
+    document.title = `${project.name} - LiveReview`;
     ctx.socket.start();
     inner = build({ ctx, chrome, project });
   })().catch(() => {

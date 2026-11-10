@@ -130,7 +130,7 @@ export function invitePage(projectName, token) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Join ${escapeHtml(projectName)} · LiveReview</title>
+<title>Join ${escapeHtml(projectName)} - LiveReview</title>
 ${links(BASE_CSS)}
 </head>
 <body class="static-page">
@@ -268,7 +268,7 @@ export function registerPages(router, { projects, sessions, now }) {
     (ctx) => {
       if (ctx.viewer) redirect(ctx.res, '/');
       else if (ctx.listener.kind === 'admin') unauthenticatedPage(ctx);
-      else sendHtml(ctx.res, 200, shell({ title: 'Sign in · LiveReview' }));
+      else sendHtml(ctx.res, 200, shell({ title: 'Sign in - LiveReview' }));
     },
     { auth: false, page: true },
   );

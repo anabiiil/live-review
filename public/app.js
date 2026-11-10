@@ -86,7 +86,7 @@ async function render() {
       return;
     }
     if (route.name === 'notfound') {
-      document.title = 'Not found · LiveReview';
+      document.title = 'Not found - LiveReview';
       setChildren(host, h('div', { class: 'page' }, messageBox('Page not found', 'Check the address and try again.')));
       return;
     }
