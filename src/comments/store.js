@@ -284,21 +284,6 @@ export function createCommentStore(db) {
     },
 
     /**
-     * Newest-first unresolved, non-outdated, non-hidden top-level threads across all projects (the owner's inbox).
-     * @param {number} [limit]
-     * @returns {Thread[]}
-     */
-    recentOpenThreads(limit = 200) {
-      const rows = db
-        .prepare(
-          `${SELECT} WHERE c.parent_id IS NULL AND c.resolved = 0 AND c.outdated = 0 AND c.hidden = 0
-           ORDER BY c.created_at DESC, c.id DESC LIMIT ?`,
-        )
-        .all(limit);
-      return withReplies(rows.map(toComment));
-    },
-
-    /**
      * Top-level threads for the threads listing, newest first, across every target (live, commits, outdated,
      * rewritten and hidden ones alike). `projectId` null lists every project.
      * @param {{projectId?:number|null, status?:'open'|'resolved'|'all'}} [opts]

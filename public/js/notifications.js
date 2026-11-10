@@ -23,10 +23,9 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
  *   me: {email:string, kind:'owner'|'reviewer', emailNotifications?:boolean},
  *   navigate: (url:string)=>void,
  *   onUnread?: (n:number)=>void,
- *   settingsInPanel?: boolean,
- * }} o settingsInPanel: show the email preference in the dropdown (pages without an avatar menu)
+ * }} o
  */
-export function createNotificationCenter({ socket, me, navigate, onUnread = () => {}, settingsInPanel = false }) {
+export function createNotificationCenter({ socket, me, navigate, onUnread = () => {} }) {
   /** @type {Note[]} */
   let items = [];
   let unread = 0;
@@ -137,13 +136,6 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
     });
   }
 
-  function emailCheckbox() {
-    const box = /** @type {HTMLInputElement} */ (h('input', { type: 'checkbox', class: 'note-email' }));
-    box.checked = emailOn;
-    box.addEventListener('change', () => void setEmail(box.checked, () => (box.checked = emailOn)));
-    return h('label', { class: 'check note-email-label' }, box, 'Email me about comments');
-  }
-
   /** Focusable things in the dropdown, in order (to keep the focus in place across a redraw). */
   const focusables = () => /** @type {HTMLElement[]} */ ([...panel.querySelectorAll('a, button, input')]);
 
@@ -161,7 +153,7 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
     else if (!items.length) body = h('p', { class: 'note-empty', text: "You're all caught up. Replies and resolved comments show up here." });
     else body = h('ul', { class: 'note-list' }, items.map(itemEl));
     const desktop = desktopControl();
-    const foot = desktop || settingsInPanel ? h('div', { class: 'note-foot' }, settingsInPanel ? emailCheckbox() : null, desktop) : null;
+    const foot = desktop ? h('div', { class: 'note-foot' }, desktop) : null;
     setChildren(panel, head, body, foot);
     if (at >= 0) {
       const list = focusables().filter((el) => !(/** @type {any} */ (el).disabled));
@@ -227,11 +219,8 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
     if (!panel.hidden) drawPanel();
   }
 
-  /**
-   * @param {boolean} on
-   * @param {()=>void} [revert] called when saving failed
-   */
-  async function setEmail(on, revert) {
+  /** @param {boolean} on @returns {Promise<boolean>} the stored preference */
+  async function setEmail(on) {
     const was = emailOn;
     emailOn = on;
     try {
@@ -239,7 +228,6 @@ export function createNotificationCenter({ socket, me, navigate, onUnread = () =
       emailOn = r.emailNotifications;
     } catch {
       emailOn = was;
-      revert?.();
     }
     return emailOn;
   }

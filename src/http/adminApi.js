@@ -20,7 +20,6 @@ const MAX_EMAIL = 254;
 const MAX_OWNER_NAME = 60;
 const MAX_FROM_NAME = 60;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
-const INBOX_LIMIT = 200;
 const REPO_REASONS = new Set(['not-a-repo', 'not-root', 'forbidden']);
 const CONFIG_KEYS = new Set(['publicHost', 'resendApiKey', 'fromEmail', 'ownerName', 'ownerEmail', 'tunnelName', 'publicPort', 'adminPort']);
 
@@ -390,33 +389,6 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
       const status = threadStatus(query);
       const listed = await listThreads(comments.threads({ status }), (id) => projects.get(id));
       sendJson(res, 200, { threads: listed.map(({ listed: t, project: p }) => ({ ...t, slug: p.slug, projectName: p.name })) });
-    },
-    admin,
-  );
-
-  // ---- inbox -------------------------------------------------------------------------------
-
-  router.add(
-    'GET',
-    '/api/admin/inbox',
-    ({ res }) => {
-      /** @type {Map<number, import('../projects/store.js').Project|null>} */
-      const cache = new Map();
-      const items = [];
-      for (const t of comments.recentOpenThreads(INBOX_LIMIT)) {
-        if (!cache.has(t.projectId)) cache.set(t.projectId, projects.get(t.projectId));
-        const p = cache.get(t.projectId);
-        if (!p) continue;
-        // The stored anchor (copied file content) stays server-side.
-        const { anchor, replies, ...rest } = t;
-        items.push({
-          slug: p.slug,
-          projectName: p.name,
-          target: t.target,
-          thread: { ...rest, replies: replies.map(({ anchor: _a, ...r }) => r) },
-        });
-      }
-      sendJson(res, 200, items);
     },
     admin,
   );

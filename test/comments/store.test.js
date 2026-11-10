@@ -245,24 +245,3 @@ test('hasTarget tells whether a project has top-level comments on a target', () 
   assert.equal(store.hasTarget(1, 'abc12'), false);
   db.close();
 });
-
-test('recentOpenThreads lists open, visible, top-level threads across projects newest first', () => {
-  const { db, store } = setup();
-  const first = add(store, { now: 1000, path: 'a.js' });
-  const second = add(store, { now: 2000, projectId: 2, path: 'b.js' });
-  const third = add(store, { now: 3000, path: 'c.js' });
-  const resolved = add(store, { now: 4000, path: 'd.js' });
-  const outdated = add(store, { now: 5000, path: 'e.js' });
-  const hidden = add(store, { now: 6000, path: 'notes.txt' });
-  store.setResolved(resolved.id, OWNER, true);
-  store.updatePosition(outdated.id, { outdated: true });
-  store.wipeHidden(1, (p) => p === 'notes.txt');
-  const reply = store.reply(first.id, { authorEmail: 'bob@example.com', body: 'x', now: 7000 });
-
-  const threads = store.recentOpenThreads(10);
-  assert.deepEqual(threads.map((t) => t.id), [third.id, second.id, first.id]);
-  assert.deepEqual(threads[2].replies.map((r) => r.id), [reply.id]);
-  assert.ok(!threads.some((t) => [resolved.id, outdated.id, hidden.id].includes(t.id)));
-  assert.deepEqual(store.recentOpenThreads(2).map((t) => t.id), [third.id, second.id]);
-  db.close();
-});

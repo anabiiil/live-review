@@ -130,7 +130,7 @@ test('every admin API requires the owner session', async () => {
     ['POST', '/api/admin/projects/1/members'],
     ['POST', '/api/admin/projects/1/members/a@b.co/invite'],
     ['DELETE', '/api/admin/projects/1/members/a@b.co'],
-    ['GET', '/api/admin/inbox'],
+    ['GET', '/api/admin/threads'],
   ])) {
     const res = await adm(path, { method, cookie: null });
     assert.equal(res.status, 401, `${method} ${path}`);
@@ -141,7 +141,7 @@ test('every admin API requires the owner session', async () => {
 });
 
 test('admin routes do not exist on the public listener', async () => {
-  for (const path of ['/admin', '/api/admin/config', '/api/admin/projects', '/api/admin/inbox']) {
+  for (const path of ['/admin', '/api/admin/config', '/api/admin/projects', '/api/admin/threads']) {
     const res = await pub(path, { cookie: ctx.ownerCookie });
     assert.equal(res.status, 404, path);
   }
@@ -678,54 +678,8 @@ test('ids must be positive integers; unknown projects are 404', async () => {
   }
 });
 
-test('inbox: newest first, open top-level threads across projects, no anchors, limited to 200', async () => {
-  const { project: pa } = await newProject('Inbox A');
-  const { project: pb } = await newProject('Inbox B');
-  const { comments } = ctx.app.services;
-  const anchor = { lineText: 'one', before: [], after: [] };
-  const make = (/** @type {number} */ projectId, /** @type {string} */ path, /** @type {number} */ now, target = 'live') =>
-    comments.create({ projectId, target, path, line: 1, side: 'new', anchor, authorEmail: 'a@example.com', body: `at ${now}`, now });
-  const base = 4_000_000_000_000; // newer than anything created by earlier tests
-  const oldest = make(pa.id, 'src/a.js', base + 1);
-  const middle = make(pb.id, 'src/a.js', base + 2, 'abcdef1234567');
-  const newest = make(pa.id, 'src/a.js', base + 3);
-  const resolved = make(pa.id, 'src/a.js', base + 4);
-  const outdated = make(pa.id, 'src/a.js', base + 5);
-  const hidden = make(pb.id, 'notes.txt', base + 6);
-  comments.setResolved(resolved.id, { kind: 'owner', email: OWNER_EMAIL, name: null }, true);
-  comments.updatePosition(outdated.id, { outdated: true });
-  comments.wipeHidden(pb.id, (p) => p === 'notes.txt');
-  comments.reply(oldest.id, { authorEmail: 'b@example.com', body: 'a reply', now: base + 7 });
-
-  const res = await adm('/api/admin/inbox');
-  assert.equal(res.status, 200);
-  const items = res.json();
-  const mine = items.filter((/** @type {{thread:{id:number}}} */ i) => [oldest, middle, newest, resolved, outdated, hidden].some((c) => c.id === i.thread.id));
-  assert.deepEqual(mine.map((/** @type {{thread:{id:number}}} */ i) => i.thread.id), [newest.id, middle.id, oldest.id]);
-  assert.deepEqual(items.slice(0, 3).map((/** @type {{thread:{id:number}}} */ i) => i.thread.id), [newest.id, middle.id, oldest.id]);
-  assert.equal(mine[0].slug, 'inbox-a');
-  assert.equal(mine[0].projectName, 'Inbox A');
-  assert.equal(mine[0].target, 'live');
-  assert.equal(mine[1].slug, 'inbox-b');
-  assert.equal(mine[1].target, 'abcdef1234567');
-  assert.equal(mine[2].thread.replies.length, 1);
-  assert.ok(!res.body.includes('"anchor"'));
-  assert.ok(!res.body.includes('lineText'));
-});
-
-test('inbox is capped at 200 threads', async () => {
-  const { project } = await newProject('Inbox Cap');
-  const anchor = { lineText: 'one', before: [], after: [] };
-  const base = 5_000_000_000_000;
-  ctx.db.exec('BEGIN');
-  for (let i = 0; i < 205; i++) {
-    ctx.app.services.comments.create({
-      projectId: project.id, target: 'live', path: 'src/a.js', line: 1, side: 'new', anchor, authorEmail: 'a@example.com', body: 'x', now: base + i,
-    });
-  }
-  ctx.db.exec('COMMIT');
-  const res = await adm('/api/admin/inbox');
-  assert.equal(res.json().length, 200);
+test('the v1 inbox endpoint is gone (the threads listing replaced it)', async () => {
+  assert.equal((await adm('/api/admin/inbox')).status, 404);
 });
 
 test('comments posted from the admin listener are authored as the owner email', async () => {
