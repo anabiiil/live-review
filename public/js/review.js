@@ -186,7 +186,7 @@ export function createReview({ slug, target, root, me }) {
       main.append(h('p', { class: 'empty', text: target === 'live' ? 'No uncommitted changes right now. This page updates by itself when files change; to comment on earlier work, open Commits.' : 'This commit changes no files.' }));
     } else {
       main.append(
-        h('p', { class: 'comment-hint', text: 'To comment, click a line number or the + beside it. Lines with comments carry a mark in the right margin; click it to open the conversation.' }),
+        h('p', { class: 'comment-hint', text: 'To comment, click the + next to any line. Lines with comments get a yellow mark on the right; click it to open the conversation.' }),
       );
     }
     main.append(...fileEls);

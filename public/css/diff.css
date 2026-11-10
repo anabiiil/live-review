@@ -52,11 +52,11 @@
 table.diff { --mark-w: 44px; border-collapse: collapse; table-layout: fixed; width: 100%; font: var(--fs-13)/var(--lh-code) var(--mono); }
 table.diff.unified { min-width: calc(var(--maxch, 80) * 1ch + 7rem + 2ch + var(--mark-w)); }
 table.diff.split { min-width: calc(2 * (var(--maxch, 80) * 1ch + 3.5rem + 2ch) + var(--mark-w)); }
-.c-num { width: 3.5rem; }
+.c-num { width: 4rem; }
 .c-mark { width: var(--mark-w); }
 table.diff td { padding: 0; vertical-align: top; }
 
-/* Gutters: muted numbers; the whole cell starts a comment, the "+" shows on hover. */
+/* Gutters: muted numbers; the whole cell starts a comment. The "+" is always there (quiet), solid on hover. */
 table.diff td.num { position: relative; padding: 0 var(--s2) 0 0; text-align: right; color: color-mix(in srgb, var(--ink-soft) 70%, transparent);
   cursor: pointer; user-select: none; }
 table.diff td.num.empty { cursor: default; }
@@ -64,12 +64,11 @@ table.diff td.num .n { display: block; }
 table.diff td.num:hover .n { color: var(--ink); }
 table.diff td.num .addc {
   position: absolute; left: 3px; top: 1px; width: 17px; height: 17px; padding: 0;
-  border: 0; border-radius: 4px; background: var(--cobalt); color: var(--cobalt-ink);
-  font: 600 13px/17px var(--mono); cursor: pointer; opacity: 0; transform: scale(0.85);
-  transition: opacity var(--t-fast) ease, transform var(--t-fast) ease;
+  border: 0; border-radius: 4px; background: var(--cobalt-wash); color: var(--cobalt);
+  font: 600 13px/17px var(--mono); cursor: pointer;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
 }
-tr.line:hover .addc, td.num .addc:focus-visible { opacity: 1; transform: none; }
-@media (hover: none) { table.diff td.num .addc { opacity: 0.35; transform: none; } }
+tr.line:hover .addc, td.num .addc:hover, td.num .addc:focus-visible { background: var(--cobalt); color: var(--cobalt-ink); }
 table.diff td.num.add { background: color-mix(in srgb, var(--add-strong) 12%, var(--add)); }
 table.diff td.num.del { background: color-mix(in srgb, var(--del-strong) 10%, var(--del)); }
 
