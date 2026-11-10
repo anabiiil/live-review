@@ -18,6 +18,7 @@ import { attachOnCommit, markRewritten, reanchorLive } from '../comments/reancho
  * @property {LiveMessage|null} last
  * @property {string|null} sent serialised last message broadcast to subscribers
  * @property {boolean} logged an unexpected error was already logged
+ * @property {number|null} changedAt when a run last saw the live state differ from the one before (epoch ms)
  */
 
 /**
@@ -38,7 +39,7 @@ export function createPipeline({ projects, comments, hub }) {
   function stateOf(projectId) {
     let st = states.get(projectId);
     if (!st) {
-      st = { running: null, pending: false, initialized: false, headSha: null, last: null, sent: null, logged: false };
+      st = { running: null, pending: false, initialized: false, headSha: null, last: null, sent: null, logged: false, changedAt: null };
       states.set(projectId, st);
     }
     return st;
@@ -91,7 +92,11 @@ export function createPipeline({ projects, comments, hub }) {
       // Subscribers already have an identical state: tell them only about other comment targets.
       const sent = JSON.stringify(st.last);
       if (sent === st.sent) targets.delete('live');
-      else hub.broadcast(projectId, st.last);
+      else {
+        // The first result after start (or after an error) is not a change the reader would call new.
+        if (st.sent !== null) st.changedAt = Date.now();
+        hub.broadcast(projectId, st.last);
+      }
       st.sent = sent;
       for (const target of targets) hub.broadcast(projectId, { type: 'comments', slug: now.slug, target });
     } catch (err) {
@@ -155,6 +160,16 @@ export function createPipeline({ projects, comments, hub }) {
       if (refresh || !st.last) await recompute(projectId);
       else if (st.running) await st.running;
       return states.get(projectId)?.last ?? null;
+    },
+
+    /**
+     * The head and change time of the last successful run, without running git; null when there is none yet.
+     * @param {number} projectId
+     * @returns {{head:HeadState, changedAt:number|null}|null}
+     */
+    cached(projectId) {
+      const st = states.get(projectId);
+      return st?.last?.type === 'live' ? { head: st.last.head, changedAt: st.changedAt } : null;
     },
 
     /**

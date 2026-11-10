@@ -1,7 +1,7 @@
 import { get } from '../api.js';
 import { createChrome } from '../chrome.js';
 import { h, messageBox, setChildren } from '../dom.js';
-import { openCount, projectRowMeta } from '../shell-model.js';
+import { openCount, projectActivity, projectRowMeta } from '../shell-model.js';
 
 /**
  * @param {import('../chrome.js').Ctx} ctx
@@ -29,20 +29,28 @@ export function projectsView(ctx, host) {
           h(
             'ul',
             { class: 'rows project-rows' },
-            list.map((/** @type {{slug:string, name:string, open:number}} */ p) =>
-              h(
+            list.map((/** @type {{slug:string, name:string, open:number, branch:string|null, lastChangeAt:number|null}} */ p) => {
+              const activity = projectActivity(p);
+              return h(
                 'li',
                 null,
                 h(
                   'a',
                   { class: 'row project-row', href: `/${encodeURIComponent(p.slug)}/live`, 'data-link': '' },
-                  h('span', { class: 'row-main' }, h('span', { class: 'row-title', dir: 'auto', text: p.name }), h('span', { class: 'row-sub', dir: 'ltr', text: `/${p.slug}` })),
+                  h(
+                    'span',
+                    { class: 'row-main' },
+                    h('span', { class: 'row-title', dir: 'auto', text: p.name }),
+                    activity
+                      ? h('span', { class: 'row-sub row-activity', dir: 'ltr', text: activity })
+                      : h('span', { class: 'row-sub', dir: 'ltr', text: `/${p.slug}` }),
+                  ),
                   p.open
                     ? h('span', { class: 'row-open' }, h('span', { class: 'mark-count', text: openCount(p.open) }), h('span', { class: 'row-open-text', text: p.open === 1 ? 'open comment' : 'open comments' }))
                     : h('span', { class: 'row-open quiet', text: projectRowMeta(p) }),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
         ),
       );

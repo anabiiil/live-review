@@ -156,7 +156,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
   const services = { projects, comments, codes, sessions, owner, pipeline, hub, watcherPool };
 
   const router = createRouter();
-  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions, events, notifier });
+  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions, events, notifier, pipeline });
   registerAdminApi(router, {
     config, db, now, emailSender: sender, projects, comments, sessions, owner, events,
     boundPorts: () => ({ publicPort: publicListener.port, adminPort: adminListener.port }),

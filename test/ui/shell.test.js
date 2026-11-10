@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initials, openCount, projectRowMeta } from '../../public/js/shell-model.js';
+import { initials, openCount, projectActivity, projectRowMeta } from '../../public/js/shell-model.js';
 import { ICONS } from '../../public/js/icons.js';
 
 test('initials: up to two letters from the name, else the email', () => {
@@ -22,6 +22,19 @@ test('projectRowMeta: open comment wording', () => {
   assert.equal(projectRowMeta({ open: 0 }), 'No open comments');
   assert.equal(projectRowMeta({ open: 1 }), '1 open comment');
   assert.equal(projectRowMeta({ open: 4 }), '4 open comments');
+});
+
+test('projectActivity: branch and last change in a sentence, no middle dots', () => {
+  const now = Date.UTC(2026, 10, 10, 12, 0, 0);
+  assert.equal(projectActivity({ branch: 'main', lastChangeAt: now - 5 * 60_000 }, now), 'On main, updated 5 minutes ago');
+  assert.equal(projectActivity({ branch: 'main', lastChangeAt: now - 60_000 }, now), 'On main, updated 1 minute ago');
+  assert.equal(projectActivity({ branch: 'feat/x', lastChangeAt: now - 10_000 }, now), 'On feat/x, updated just now');
+  assert.equal(projectActivity({ branch: null, lastChangeAt: now - 3 * 3600_000 }, now), 'Updated 3 hours ago');
+  assert.equal(projectActivity({ branch: 'main', lastChangeAt: null }, now), 'On main');
+  assert.equal(projectActivity({ branch: 'main', lastChangeAt: now - 2 * 86400_000 }, now), 'On main, updated 2 days ago');
+  assert.equal(projectActivity({ branch: null, lastChangeAt: Date.UTC(2026, 0, 2) }, now), 'Updated on 2026-01-02');
+  assert.equal(projectActivity({}, now), null);
+  assert.ok(!projectActivity({ branch: 'main', lastChangeAt: now }, now)?.includes('·'));
 });
 
 test('icons: every icon is a list of drawable SVG elements', () => {

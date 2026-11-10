@@ -175,6 +175,19 @@ export async function commitInfo(root, sha) {
 }
 
 /**
+ * Committer time of a commit in epoch ms; null when it cannot be read.
+ * @param {string} root
+ * @param {string} sha full commit id
+ * @returns {Promise<number|null>}
+ */
+export async function commitTime(root, sha) {
+  if (!SHA_RE.test(sha)) return null;
+  const { stdout, code } = await runGit(root, ['log', '-1', '--no-walk', '--no-color', '--format=%ct', sha, '--'], { allowFail: true });
+  const secs = Number.parseInt(stdout.trim(), 10);
+  return code === 0 && Number.isFinite(secs) ? secs * 1000 : null;
+}
+
+/**
  * Contents of a blob at a revision as UTF-8 text, or null when the revision
  * or path does not exist or is not a blob (directory, submodule).
  * @param {string} root

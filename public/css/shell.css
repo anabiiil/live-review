@@ -184,6 +184,7 @@ svg .mark-tab { fill: var(--hl); stroke: currentColor; }
 .row-sub { color: var(--ink-soft); font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-row .row-title { font-weight: 600; }
 .project-row .row-sub { font-family: var(--mono); font-size: var(--fs-12); }
+.project-row .row-activity { font-family: var(--sans); font-size: var(--fs-13); }
 .row-open { display: inline-flex; align-items: center; gap: var(--s2); flex: none; font-size: var(--fs-13); }
 .row-open.quiet { color: var(--ink-soft); }
 .commit-row .sha { flex: none; }

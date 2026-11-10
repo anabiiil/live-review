@@ -236,11 +236,16 @@ test('pipeline: concurrent recomputes coalesce into one follow-up run; the first
     assert.equal(live(), 1, 'the follow-up run found the same state and did not rebroadcast it');
     assert.equal((await pipeline.snapshot(p.id))?.type, 'live');
     assert.equal(live(), 1, 'snapshot reuses the last result');
+    assert.equal(pipeline.cached(p.id)?.head.branch, 'main');
+    assert.equal(pipeline.cached(p.id)?.changedAt, null, 'the first result is not a change');
+    assert.equal(pipeline.cached(9999), null);
     assert.equal((await pipeline.snapshot(p.id, { refresh: true }))?.type, 'live');
     assert.equal(live(), 1, 'an unchanged state is not broadcast again');
     await repo.write('b.js', 'new\n');
     await pipeline.recompute(p.id);
     assert.equal(live(), 2, 'a changed state is broadcast');
+    const changedAt = pipeline.cached(p.id)?.changedAt;
+    assert.ok(typeof changedAt === 'number' && Date.now() - changedAt < 5000, 'a changed state records when');
     assert.equal(sent.filter((s) => s.msg.type === 'comments' && s.msg.target === 'live').length, 2);
 
     // A commit made before the pipeline ever saw this project is not attached: the comment is outdated instead.

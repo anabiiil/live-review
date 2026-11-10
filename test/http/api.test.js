@@ -144,7 +144,14 @@ test('reviewer sees only member projects; no-access and unknown give identical 4
   const cookie = await aliceCookie();
   const list = await pub('/api/projects', { cookie });
   assert.equal(list.status, 200);
-  assert.deepEqual(list.json(), [
+  const rows = list.json();
+  for (const r of rows) {
+    // Branch and last change come from the repository head (read-only git): its commit time here.
+    assert.equal(r.branch, 'main');
+    assert.equal(typeof r.lastChangeAt, 'number');
+    assert.ok(Math.abs(Date.now() - r.lastChangeAt) < 10 * 60_000, `recent: ${r.lastChangeAt}`);
+  }
+  assert.deepEqual(rows.map(({ branch, lastChangeAt, ...rest }) => rest), [
     { slug: 'gone', name: 'Gone', open: 0 },
     { slug: 'nwc-legal', name: 'NWC Legal', open: 1 },
   ]);
@@ -379,6 +386,9 @@ test('deleted project folder gives 503 while the project list still works', asyn
   const list = await pub('/api/projects', { cookie });
   assert.equal(list.status, 200);
   assert.equal(list.json().length, 2);
+  const gone = list.json().find((/** @type {any} */ r) => r.slug === 'gone');
+  assert.equal(gone.branch, null, 'git errors give nulls');
+  assert.equal(gone.lastChangeAt, null);
 });
 
 test('public listener never serves admin paths', async () => {

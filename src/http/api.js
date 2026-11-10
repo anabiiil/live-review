@@ -3,7 +3,7 @@ import { join, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { normalizeEmail } from '../db.js';
 import { saveConfig } from '../config.js';
-import { RepoError, SHA_RE, commitInfo, fileAt, isReachable, listCommits } from '../git/repo.js';
+import { RepoError, SHA_RE, commitInfo, commitTime, fileAt, headState, isReachable, listCommits } from '../git/repo.js';
 import { commitDiff, ignoredAmong, liveDiff } from '../git/diff.js';
 import { isHidden } from '../privacy/hidden.js';
 import { SLUG_RE } from '../projects/store.js';
@@ -176,9 +176,10 @@ function positiveId(v) {
  *   codes:ReturnType<typeof import('../auth/codes.js').createCodeService>,
  *   sessions:ReturnType<typeof import('../auth/sessions.js').createSessionService>,
  *   events:import('node:events').EventEmitter,
- *   notifier:ReturnType<typeof import('../notify/notifier.js').createNotifier>}} deps
+ *   notifier:ReturnType<typeof import('../notify/notifier.js').createNotifier>,
+ *   pipeline?:{cached:(projectId:number)=>{head:import('../types.js').HeadState, changedAt:number|null}|null}}} deps
  */
-export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions, events, notifier }) {
+export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions, events, notifier, pipeline }) {
   const upsertName = db.prepare(
     'INSERT INTO users(email, name) VALUES(?, ?) ON CONFLICT(email) DO UPDATE SET name = excluded.name',
   );
@@ -358,11 +359,36 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     sendJson(res, 200, { email: v.email, name, kind: v.kind });
   });
 
-  router.add('GET', '/api/projects', ({ res, viewer }) => {
-    const list = projects
-      .projectsFor(/** @type {Viewer} */ (viewer))
-      .map((p) => ({ slug: p.slug, name: p.name, open: comments.openCounts(p.id).total }))
-      .sort((a, b) => a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
+  /**
+   * Branch and last change of a project for the projects list: from the live pipeline's last run when there
+   * is one (no git), else the repository head. The last change is the later of the head commit's time and the
+   * last working-tree change the pipeline saw. Read-only; any failure gives nulls.
+   * @param {Project} p
+   * @returns {Promise<{branch:string|null, lastChangeAt:number|null}>}
+   */
+  const projectActivity = async (p) => {
+    try {
+      const cached = pipeline?.cached(p.id) ?? null;
+      let head = cached?.head ?? null;
+      if (!head) {
+        await ensureRepo(p.path);
+        head = await headState(p.path);
+      }
+      const committed = head.sha ? await commitTime(p.path, head.sha) : null;
+      const times = [committed, cached?.changedAt ?? null].filter((t) => t !== null);
+      return { branch: head.branch, lastChangeAt: times.length ? Math.max(...times) : null };
+    } catch {
+      return { branch: null, lastChangeAt: null };
+    }
+  };
+
+  router.add('GET', '/api/projects', async ({ res, viewer }) => {
+    const mine = projects.projectsFor(/** @type {Viewer} */ (viewer));
+    const list = (
+      await Promise.all(
+        mine.map(async (p) => ({ slug: p.slug, name: p.name, open: comments.openCounts(p.id).total, ...(await projectActivity(p)) })),
+      )
+    ).sort((a, b) => a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
     sendJson(res, 200, list);
   });
 
