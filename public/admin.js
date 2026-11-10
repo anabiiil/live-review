@@ -1,6 +1,7 @@
 // LiveReview admin app: setup / settings, projects, comments across projects and the notification center.
 import { ApiError, get, onUnauthorized } from './js/api.js';
 import { h, messageBox, setChildren } from './js/dom.js';
+import { icon } from './js/icons.js';
 import { createSocket } from './js/ws.js';
 import { tabFromHash, unreadTitle } from './js/admin/helpers.js';
 import { commentsView } from './js/admin/comments.js';
@@ -64,12 +65,18 @@ function header() {
   return h(
     'header',
     { class: 'topbar' },
-    h('span', { class: 'brand', text: 'LiveReview — Admin' }),
-    tabs,
+    h('a', { class: 'brand', href: config?.configured ? '#projects' : null, 'aria-label': 'LiveReview admin' }, icon('mark'), h('span', { class: 'brand-name', text: 'LiveReview' })),
+    h('span', { class: 'chip admin-tag', text: 'Admin' }),
     h('span', { class: 'spacer' }),
-    notices?.bell ?? null,
+    tabs,
+    config?.configured ? notices?.bell ?? null : null,
     config?.configured && config.publicHost
-      ? h('a', { class: 'public-link', id: 'public-link', href: `https://${config.publicHost}`, target: '_blank', rel: 'noopener noreferrer', text: 'Open public site' })
+      ? h(
+          'a',
+          { class: 'btn public-link', id: 'public-link', href: `https://${config.publicHost}`, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open public site' },
+          h('span', { class: 'public-link-text', text: 'Open public site' }),
+          icon('arrow-up-right'),
+        )
       : null,
   );
 }
@@ -86,7 +93,7 @@ function render() {
   const tab = setup ? 'settings' : tabFromHash(location.hash);
   if (tab === 'settings') {
     const el = settingsView({
-      config, setup,
+      config, me, setup,
       onSaved: (next) => {
         config = /** @type {any} */ (next);
         const link = document.getElementById('public-link');
@@ -146,8 +153,6 @@ async function start() {
     onUnread: (n) => {
       document.title = unreadTitle(n);
     },
-    // The admin page has no avatar menu: the email preference sits in the dropdown.
-    settingsInPanel: true,
   });
   render();
   if (config?.configured) refreshOpenCount();

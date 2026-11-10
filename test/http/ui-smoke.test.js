@@ -2,7 +2,7 @@ import '../helpers/quiet-sqlite.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,7 +95,7 @@ test('/admin with the owner cookie returns the admin shell; without it, the term
   assert.match(String(page.headers['content-type']), /^text\/html/);
   assert.ok(page.body.includes('<div id="app">'));
   assert.ok(page.body.includes('src="/static/admin.js"'));
-  assert.deepEqual(stylesheets(page.body), [...APP_CSS, '/static/admin.css']);
+  assert.deepEqual(stylesheets(page.body), [...APP_CSS, '/static/css/admin.css']);
   assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/.test(page.body), 'no inline scripts');
   const anon = await request(ctx.ports.adminPort, { path: '/admin', headers: { Host: base } });
   assert.equal(anon.status, 401);
@@ -112,7 +112,7 @@ test('admin modules and stylesheet are served from the admin listener and parse'
     assert.match(String(res.headers['content-type']), /^text\/javascript/, file);
     await run(process.execPath, ['--check', join(PUBLIC_DIR, file)]);
   }
-  const css = await request(ctx.ports.adminPort, { path: '/static/admin.css', headers: { Host: base } });
+  const css = await request(ctx.ports.adminPort, { path: '/static/css/admin.css', headers: { Host: base } });
   assert.equal(css.status, 200);
   assert.match(String(css.headers['content-type']), /^text\/css/);
   assert.match(css.body, /\.copy-field/);
@@ -139,6 +139,16 @@ test('stylesheets are served as css; tokens carry the spec palette in light and 
   assert.match(tokens, /prefers-color-scheme:\s*dark/);
   for (const hex of ['#F6F7FB', '#2F45D8', '#FFD84D', '#14161D', '#8C9BFF', '#F2C94C']) assert.ok(tokens.includes(hex), hex);
   assert.match(tokens, /"IBM Plex Sans", "IBM Plex Sans Arabic"/);
+});
+
+test('no stylesheet reads a v1 token alias (the aliases are gone from tokens.css)', async () => {
+  const dir = join(PUBLIC_DIR, 'css');
+  const old = /var\(--(?:bg|surface|surface-2|text|muted|border|accent|accent-ink|danger|warn-bg|warn-text|error-bg|error-text|add-bg|del-bg|hunk-bg|highlight)\)/;
+  for (const f of (await readdir(dir)).filter((n) => n.endsWith('.css'))) {
+    assert.ok(!old.test(await readFile(join(dir, f), 'utf8')), `${f} uses a v1 alias`);
+  }
+  const tokens = (await pub('/static/css/tokens.css')).body;
+  assert.ok(!/--surface:|--muted:|--accent:/.test(tokens), 'aliases removed');
 });
 
 test('every font the tokens name is served as woff2 with a long cache', async () => {

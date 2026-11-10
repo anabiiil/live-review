@@ -82,26 +82,9 @@
   --t-fast: 150ms;
   --topbar-h: 52px;
 
-  /* v1 names, still read by diff.css and admin.css until those are restyled */
-  --bg: var(--paper);
-  --surface: var(--sheet);
-  --surface-2: var(--sheet-2);
-  --text: var(--ink);
-  --muted: var(--ink-soft);
-  --border: var(--rule);
-  --accent: var(--cobalt);
-  --accent-ink: var(--cobalt-ink);
-  --danger: var(--del-strong);
-  --warn-bg: var(--hl-wash);
-  --warn-text: var(--ink);
-  --error-bg: var(--del);
-  --error-text: var(--del-strong);
-  --add-bg: var(--add);
+  /* badge fills for added / deleted file markers */
   --add-num: color-mix(in srgb, var(--add-strong) 18%, var(--add));
-  --del-bg: var(--del);
   --del-num: color-mix(in srgb, var(--del-strong) 16%, var(--del));
-  --hunk-bg: var(--cobalt-wash);
-  --highlight: var(--hl-wash);
 }
 
 @media (prefers-color-scheme: dark) {

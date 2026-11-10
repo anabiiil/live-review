@@ -1,6 +1,9 @@
-// Projects tab: list, add (path -> preview -> confirm), edit, remove, members and invite links.
+// Projects tab: a list of projects beside the selected one (reviewers and invite links, hidden files,
+// name and address, removal), and the add-project flow (path -> preview -> confirm).
 import { del, get, patch, post } from '../api.js';
-import { h, messageBox, setChildren } from '../dom.js';
+import { h, setChildren } from '../dom.js';
+import { icon } from '../icons.js';
+import { initials } from '../shell-model.js';
 import { createDraftState, dropDrafts, errorMessage, getDraft, inviteStatus, normalizeEmail, parsePatterns, patternsText, rememberFocus, setDraft, takeFocus } from './helpers.js';
 import { busy, confirmDialog, copyField, field } from './widgets.js';
 
@@ -10,8 +13,11 @@ import { busy, confirmDialog, copyField, field } from './widgets.js';
  * @typedef {{inviteLink:string, emailSent:boolean, emailError?:string}} Invite
  */
 
+/** The project that was open when the tab was last left (the tab is rebuilt on every visit). @type {number|'new'|null} */
+let remembered = null;
+
 /**
- * Keep a control's text in the draft state so a live refresh that rebuilds the card restores it.
+ * Keep a control's text in the draft state so a live refresh that rebuilds the panel restores it.
  * @param {import('./helpers.js').DraftState} drafts
  * @param {HTMLElement} control
  * @param {string} key
@@ -42,8 +48,9 @@ function fileList(title, files, emptyText) {
 }
 
 /**
- * The add-project form: path + name (+ slug) -> Preview -> Add project.
- * @param {{onAdded:()=>void}} o
+ * The add-project form: path + name (+ slug) -> Preview -> Add project. Built once and re-mounted, so what
+ * was typed (and the preview) survives redraws of the page.
+ * @param {{onAdded:(project:Project)=>void}} o
  */
 function addProjectForm({ onAdded }) {
   const path = field('ap-path', 'Folder path', h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: '/Users/you/code/my-app', dir: 'ltr' }), {
@@ -62,12 +69,11 @@ function addProjectForm({ onAdded }) {
 
   const form = h(
     'form',
-    { class: 'card add-project', novalidate: '' },
-    h('h2', { text: 'Add a project' }),
+    { class: 'add-project', novalidate: '' },
     path.row,
     h('div', { class: 'row2' }, name.row, slug.row),
     error,
-    h('div', { class: 'composer-actions' }, previewBtn),
+    h('div', { class: 'actions' }, previewBtn),
     previewHost,
   );
 
@@ -89,10 +95,10 @@ function addProjectForm({ onAdded }) {
           busy(add, 'Adding…', async () => {
             addError.textContent = '';
             try {
-              await post('/api/admin/projects', { path: folder, name: val(name).trim(), ...(val(slug).trim() ? { slug: val(slug).trim() } : {}) });
+              const created = await post('/api/admin/projects', { path: folder, name: val(name).trim(), ...(val(slug).trim() ? { slug: val(slug).trim() } : {}) });
               for (const x of [path, name, slug]) /** @type {HTMLInputElement} */ (x.control).value = '';
               clearPreview();
-              onAdded();
+              onAdded(created);
             } catch (err) {
               addError.textContent = errorMessage(/** @type {any} */ (err));
             }
@@ -103,52 +109,8 @@ function addProjectForm({ onAdded }) {
           h('p', null, 'Reviewers will see this repository at ', h('code', { dir: 'ltr', text: r.root }), '.'),
           h('div', { class: 'preview-lists' }, fileList('Visible to reviewers', r.visible, 'No files yet.'), fileList('Hidden', r.hidden, 'Nothing is hidden.')),
           addError,
-          h('div', { class: 'composer-actions' }, add),
+          h('div', { class: 'actions' }, add),
         );
-      } catch (err) {
-        error.textContent = errorMessage(/** @type {any} */ (err));
-      }
-    });
-  });
-  return form;
-}
-
-/**
- * Edit panel of one project: name, address name, extra hidden patterns.
- * @param {Project} p
- * @param {{drafts:import('./helpers.js').DraftState, onSaved:()=>void, onCancel:()=>void}} o
- */
-function editForm(p, { drafts, onSaved, onCancel }) {
-  const name = field(`ed-name-${p.id}`, 'Project name', h('input', { type: 'text', value: p.name, dir: 'auto' }));
-  const slug = field(`ed-slug-${p.id}`, 'Address name', h('input', { type: 'text', value: p.slug, dir: 'ltr', autocapitalize: 'off', spellcheck: 'false' }), {
-    hint: 'Changing it breaks links you already shared.',
-  });
-  const hidden = field(`ed-hidden-${p.id}`, 'Extra hidden files', h('textarea', { rows: 4, dir: 'ltr', spellcheck: 'false', placeholder: '*.log\nnotes.md' }), {
-    hint: 'One file name or pattern per line, matched against the file name. Secret-looking files are always hidden.',
-  });
-  bindDraft(drafts, name.control, `edit:${p.id}:name`, p.name);
-  bindDraft(drafts, slug.control, `edit:${p.id}:slug`, p.slug);
-  bindDraft(drafts, hidden.control, `edit:${p.id}:hidden`, patternsText(p.extraHidden));
-  const error = h('p', { class: 'form-error', role: 'alert' });
-  const save = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'submit', text: 'Save' }));
-  const form = h(
-    'form',
-    { class: 'edit-panel', novalidate: '' },
-    name.row, slug.row, hidden.row, error,
-    h('div', { class: 'composer-actions' }, save, h('button', { class: 'btn', type: 'button', text: 'Cancel', onclick: onCancel })),
-  );
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    error.textContent = '';
-    const body = {
-      name: /** @type {HTMLInputElement} */ (name.control).value.trim(),
-      slug: /** @type {HTMLInputElement} */ (slug.control).value.trim(),
-      extraHidden: parsePatterns(/** @type {HTMLTextAreaElement} */ (hidden.control).value),
-    };
-    await busy(save, 'Saving…', async () => {
-      try {
-        await patch(`/api/admin/projects/${p.id}`, body);
-        onSaved();
       } catch (err) {
         error.textContent = errorMessage(/** @type {any} */ (err));
       }
@@ -173,35 +135,99 @@ function invitePanel(invite) {
  * @param {{onChanged:()=>void}} o  onChanged: something changed that other tabs may show (open counts etc.)
  */
 export function projectsView({ onChanged }) {
-  const root = h('div', { class: 'container' });
-  const listHost = h('div', { class: 'project-admin-list' });
-  /** Invite results by `${projectId}:${email}`, kept across re-renders of the list. @type {Map<string, Invite>} */
+  const root = h('div', { class: 'container admin-wide' });
+  const listHost = h('div', { class: 'pv-list' });
+  const detailHost = h('section', { class: 'pv-detail', 'aria-label': 'Project' });
+  const layout = h('div', { class: 'pv' }, listHost, detailHost);
+  /** Invite results by `${projectId}:${email}`, kept across re-renders. @type {Map<string, Invite>} */
   const invites = new Map();
-  /** @type {Set<number>} */
-  const editing = new Set();
+  /** Projects whose settings were just saved (shows "Saved" until the next change). @type {Set<number>} */
+  const justSaved = new Set();
   const drafts = createDraftState();
   /** @type {Project[]} */
   let projects = [];
+  /** @type {string|null} */
+  let lastJson = null;
+  /** The explicit choice: a project id, 'new', or none (the first project shows beside the list on wide screens). @type {number|'new'|null} */
+  let selected = remembered;
   let alive = true;
+  const addForm = addProjectForm({
+    onAdded: (created) => {
+      selected = created.id;
+      remembered = created.id;
+      reload();
+    },
+  });
+
+  /** @param {number|'new'|null} what */
+  function select(what) {
+    selected = what;
+    remembered = what;
+    draw();
+    // On a narrow screen the list is replaced by the detail: start at its top.
+    if (what !== null && getComputedStyle(listHost).display === 'none') window.scrollTo(0, 0);
+  }
 
   async function load() {
     try {
-      projects = await get('/api/admin/projects');
-    } catch (err) {
-      if (alive) setChildren(listHost, messageBox('Could not load projects', 'Please reload the page.'));
+      const next = await get('/api/admin/projects');
+      const json = JSON.stringify(next);
+      projects = next;
+      // Nothing changed: leave the page (typed text, focus, scroll) alone.
+      if (json === lastJson) return;
+      lastJson = json;
+    } catch {
+      if (alive) setChildren(listHost, h('p', { class: 'pv-empty', text: 'Could not load projects. Please reload the page.' }));
       return;
     }
     if (alive) draw();
   }
-  const reload = () => load().then(onChanged);
+  const reload = () => {
+    lastJson = null;
+    return load().then(onChanged);
+  };
 
+  /** The project to show in the detail panel, or 'new'. @returns {Project|'new'|null} */
+  function shown() {
+    if (!projects.length || selected === 'new') return 'new';
+    return projects.find((p) => p.id === selected) ?? projects[0];
+  }
+
+  // ---- list ----
+  function drawList() {
+    const current = shown();
+    const rows = projects.map((p) =>
+      h(
+        'li',
+        null,
+        h(
+          'button',
+          { class: 'row project-row', type: 'button', 'aria-current': current !== 'new' && current?.id === p.id ? 'true' : null, onclick: () => select(p.id) },
+          h('span', { class: 'row-main' }, h('span', { class: 'row-title', dir: 'auto', text: p.name }), h('span', { class: 'row-sub', dir: 'ltr', text: `/${p.slug}` })),
+          h(
+            'span',
+            { class: 'row-aside' },
+            p.open ? h('span', { class: 'chip open-chip', text: `${p.open} open` }) : null,
+            h('span', { class: 'muted', text: p.members.length === 1 ? '1 reviewer' : `${p.members.length} reviewers` }),
+          ),
+        ),
+      ),
+    );
+    setChildren(
+      listHost,
+      h('div', { class: 'pv-list-head' }, h('h1', { text: 'Projects' }), h('button', { class: 'btn primary', type: 'button', text: 'Add project', onclick: () => select('new') })),
+      rows.length ? h('ul', { class: 'rows' }, rows) : h('p', { class: 'pv-empty', text: 'No projects yet. Add the top folder of a git repository.' }),
+    );
+  }
+
+  // ---- reviewers ----
   /** @param {Project} p */
   function memberRow(p) {
     return (/** @param {Member} m */ (m) => {
       const key = `${p.id}:${normalizeEmail(m.email)}`;
       const invite = invites.get(key);
       const error = h('p', { class: 'form-error', role: 'alert' });
-      const regen = /** @type {HTMLButtonElement} */ (h('button', { class: 'link', type: 'button', text: 'New invite link' }));
+      const regen = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn small', type: 'button', text: 'New invite link' }));
       regen.addEventListener('click', () =>
         busy(regen, 'Working…', async () => {
           error.textContent = '';
@@ -232,7 +258,13 @@ export function projectsView({ onChanged }) {
       return h(
         'li',
         { class: 'member' },
-        h('div', { class: 'member-line' }, h('span', { class: 'member-email', dir: 'auto', text: m.email }), m.name ? h('span', { class: 'muted', dir: 'auto', text: m.name }) : null, h('span', { class: 'spacer' }), regen, remove),
+        h(
+          'div',
+          { class: 'member-line' },
+          h('span', { class: 'avatar small', 'aria-hidden': 'true', dir: 'auto', text: initials(m.name, m.email) }),
+          h('span', { class: 'member-who' }, h('span', { class: 'member-email', dir: 'auto', text: m.email }), m.name ? h('span', { class: 'member-name', dir: 'auto', text: m.name }) : null),
+          h('span', { class: 'member-actions' }, regen, remove),
+        ),
         invite ? invitePanel(invite) : null,
         error,
       );
@@ -265,11 +297,54 @@ export function projectsView({ onChanged }) {
     return form;
   }
 
+  // ---- name, address and hidden files ----
   /** @param {Project} p */
-  function card(p) {
-    const removeError = h('p', { class: 'form-error', role: 'alert' });
-    const removeBtn = h('button', {
-      class: 'link danger', type: 'button', text: 'Remove',
+  function settingsForm(p) {
+    const name = field(`ed-name-${p.id}`, 'Project name', h('input', { type: 'text', dir: 'auto' }));
+    const slug = field(`ed-slug-${p.id}`, 'Address name', h('input', { type: 'text', dir: 'ltr', autocapitalize: 'off', spellcheck: 'false' }), {
+      hint: 'Changing it breaks links you already shared.',
+    });
+    const hidden = field(`ed-hidden-${p.id}`, 'Hidden files', h('textarea', { rows: 4, dir: 'ltr', spellcheck: 'false', placeholder: '*.log\nnotes.md' }), {
+      hint: 'One file name or pattern per line, matched against the file name. Secret-looking files are always hidden.',
+    });
+    bindDraft(drafts, name.control, `edit:${p.id}:name`, p.name);
+    bindDraft(drafts, slug.control, `edit:${p.id}:slug`, p.slug);
+    bindDraft(drafts, hidden.control, `edit:${p.id}:hidden`, patternsText(p.extraHidden));
+    const error = h('p', { class: 'form-error', role: 'alert' });
+    const savedNote = h('span', { class: 'pv-saved', role: 'status', text: justSaved.has(p.id) ? 'Saved' : '' });
+    const save = /** @type {HTMLButtonElement} */ (h('button', { class: 'btn primary', type: 'submit', text: 'Save changes' }));
+    const form = h('form', { novalidate: '' }, name.row, slug.row, hidden.row, error, h('div', { class: 'actions pv-actions' }, save, savedNote));
+    form.addEventListener('input', () => {
+      justSaved.delete(p.id);
+      savedNote.textContent = '';
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      const body = {
+        name: /** @type {HTMLInputElement} */ (name.control).value.trim(),
+        slug: /** @type {HTMLInputElement} */ (slug.control).value.trim(),
+        extraHidden: parsePatterns(/** @type {HTMLTextAreaElement} */ (hidden.control).value),
+      };
+      await busy(save, 'Saving…', async () => {
+        try {
+          await patch(`/api/admin/projects/${p.id}`, body);
+          dropDrafts(drafts, `edit:${p.id}`);
+          justSaved.add(p.id);
+          await reload();
+        } catch (err) {
+          error.textContent = errorMessage(/** @type {any} */ (err));
+        }
+      });
+    });
+    return form;
+  }
+
+  /** @param {Project} p */
+  function removeSection(p) {
+    const error = h('p', { class: 'form-error', role: 'alert' });
+    const btn = h('button', {
+      class: 'btn danger-quiet', type: 'button', text: 'Remove project',
       onclick: async () => {
         const ok = await confirmDialog({
           title: `Remove ${p.name}?`,
@@ -279,80 +354,81 @@ export function projectsView({ onChanged }) {
         if (!ok) return;
         try {
           await del(`/api/admin/projects/${p.id}?confirm=${encodeURIComponent(p.slug)}`);
+          selected = null;
+          remembered = null;
           await reload();
         } catch (err) {
-          removeError.textContent = errorMessage(/** @type {any} */ (err));
+          error.textContent = errorMessage(/** @type {any} */ (err));
         }
       },
     });
-    const isEditing = editing.has(p.id);
-    return h(
-      'article',
-      { class: 'card project-admin' },
-      h(
-        'div',
-        { class: 'project-head' },
-        h('h2', { dir: 'auto', text: p.name }),
-        h('span', { class: 'chip', dir: 'ltr', text: p.slug }),
-        p.open ? h('span', { class: 'chip open-chip', text: p.open === 1 ? '1 open comment' : `${p.open} open comments` }) : h('span', { class: 'muted', text: 'No open comments' }),
-        h('span', { class: 'spacer' }),
-        h('a', { href: `/${encodeURIComponent(p.slug)}/live`, text: 'Open' }),
-        h('button', {
-          class: 'link', type: 'button', text: 'Edit',
-          onclick: () => {
-            if (editing.has(p.id)) {
-              editing.delete(p.id);
-              dropDrafts(drafts, `edit:${p.id}`);
-            } else editing.add(p.id);
-            draw();
-          },
-        }),
-        removeBtn,
-      ),
-      removeError,
-      h('p', { class: 'path', dir: 'ltr', text: p.path }),
-      isEditing
-        ? editForm(p, {
-            drafts,
-            onSaved: () => {
-              editing.delete(p.id);
-              dropDrafts(drafts, `edit:${p.id}`);
-              reload();
-            },
-            onCancel: () => {
-              editing.delete(p.id);
-              dropDrafts(drafts, `edit:${p.id}`);
-              draw();
-            },
-          })
-        : p.extraHidden.length
-          ? h('p', { class: 'muted', dir: 'ltr', text: `Also hidden: ${p.extraHidden.join(', ')}` })
-          : null,
-      h('h3', { text: `Reviewers (${p.members.length})` }),
-      p.members.length ? h('ul', { class: 'members' }, p.members.map(memberRow(p))) : h('p', { class: 'muted', text: 'Nobody has access yet.' }),
-      addMemberForm(p),
-    );
+    return h('section', { class: 'pv-section' }, h('div', { class: 'pv-danger' }, h('p', { text: 'Reviewers lose access and the comments on this project are deleted. Your files are not touched.' }), btn), error);
   }
 
-  /** Rebuild the list. Typed text comes back from `drafts`; the focused field and its caret are restored. */
+  // ---- detail ----
+  const back = () => h('button', { class: 'link pv-back', type: 'button', onclick: () => select(null) }, icon('chevron-down'), 'All projects');
+
+  /** @param {Project} p */
+  function projectDetail(p) {
+    return [
+      h(
+        'header',
+        { class: 'pv-head' },
+        h(
+          'div',
+          { class: 'pv-head-main' },
+          h('h2', { class: 'pv-title', dir: 'auto', text: p.name }),
+          h(
+            'div',
+            { class: 'pv-meta' },
+            h('span', { class: 'chip', dir: 'ltr', text: `/${p.slug}` }),
+            p.open ? h('span', { class: 'chip open-chip', text: p.open === 1 ? '1 open comment' : `${p.open} open comments` }) : h('span', { class: 'muted', text: 'No open comments' }),
+          ),
+          h('p', { class: 'path', dir: 'ltr', text: p.path }),
+        ),
+        h('a', { class: 'btn', href: `/${encodeURIComponent(p.slug)}/live` }, 'Open project', icon('arrow-up-right')),
+      ),
+      h(
+        'section',
+        { class: 'pv-section' },
+        h('h3', { text: p.members.length ? `Reviewers (${p.members.length})` : 'Reviewers' }),
+        p.members.length ? null : h('p', { class: 'section-sub', text: 'Nobody has access yet. Add an email address to get an invite link.' }),
+        h('ul', { class: 'members' }, p.members.map(memberRow(p))),
+        addMemberForm(p),
+      ),
+      h('section', { class: 'pv-section' }, h('h3', { text: 'Project settings' }), settingsForm(p)),
+      removeSection(p),
+    ];
+  }
+
+  /** Rebuild the page. Typed text comes back from `drafts`; the focused field and its caret are restored. */
   function draw() {
     const active = document.activeElement;
-    if (active instanceof HTMLElement && active.dataset.draft && listHost.contains(active)) {
-      const field = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (active);
+    if (active instanceof HTMLElement && active.dataset.draft && layout.contains(active)) {
+      const control = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (active);
       let start = null;
       let end = null;
       try {
-        start = field.selectionStart;
-        end = field.selectionEnd;
+        start = control.selectionStart;
+        end = control.selectionEnd;
       } catch {
         /* type=email inputs have no selection API */
       }
       rememberFocus(drafts, { key: active.dataset.draft, start, end });
     }
-    setChildren(listHost, projects.length ? projects.map(card) : messageBox('No projects yet', 'Add the top folder of a git repository above.'));
+    const current = shown();
+    layout.classList.toggle('has-detail', selected !== null && (selected === 'new' || projects.some((p) => p.id === selected)));
+    drawList();
+    setChildren(
+      detailHost,
+      back(),
+      current === 'new'
+        ? h('div', { class: 'pv-new' }, h('h2', { text: 'Add a project' }), h('p', { class: 'section-sub', text: 'Pick a git repository on this computer. You see what reviewers will and will not see before it is added.' }), addForm)
+        : projectDetail(/** @type {Project} */ (current)),
+    );
     const focus = takeFocus(drafts);
     if (!focus) return;
-    const el = [...listHost.querySelectorAll('[data-draft]')].find((e) => e instanceof HTMLElement && e.dataset.draft === focus.key);
+    const el = [...layout.querySelectorAll('[data-draft]')].find((e) => e instanceof HTMLElement && e.dataset.draft === focus.key);
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
     el.focus();
     try {
@@ -362,8 +438,8 @@ export function projectsView({ onChanged }) {
     }
   }
 
-  setChildren(root, addProjectForm({ onAdded: reload }), listHost);
-  setChildren(listHost, h('p', { class: 'muted pad', text: 'Loading…' }));
+  setChildren(root, layout);
+  setChildren(listHost, h('p', { class: 'pv-empty', text: 'Loading…' }));
   load();
 
   return {
