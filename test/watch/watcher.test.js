@@ -232,3 +232,31 @@ test('closeAll still works after the watched root disappears', async () => {
     await repo.cleanup();
   }
 });
+
+test('acquire rejects and leaves no entry when the watcher is not ready in time', async () => {
+  const repo = await makeTmpRepo();
+  const pool = createWatcherPool({ onChange: () => {}, debounceMs: DEBOUNCE, graceMs: GRACE, readyTimeoutMs: 1 });
+  try {
+    await repo.write('a.txt', 'a\n');
+    await repo.commit('init');
+    await assert.rejects(pool.acquire(1, repo.dir), /not ready/);
+    assert.deepEqual(pool.active(), []);
+  } finally {
+    await pool.closeAll();
+    await repo.cleanup();
+  }
+});
+
+test('writes inside a nested repository or submodule .git directory are ignored', () =>
+  withPool(async ({ repo, pool, calls }) => {
+    await repo.write('a.txt', 'a\n');
+    await repo.write('vendor/lib/.git/HEAD', 'ref: refs/heads/main\n');
+    await repo.commit('init');
+    await pool.acquire(1, repo.dir);
+    await sleep(SETTLE);
+    writeFileSync(join(repo.dir, 'vendor', 'lib', '.git', 'HEAD'), 'ref: refs/heads/other\n');
+    mkdirSync(join(repo.dir, 'vendor', 'lib', '.git', 'refs'), { recursive: true });
+    writeFileSync(join(repo.dir, 'vendor', 'lib', '.git', 'refs', 'x'), 'x\n');
+    await sleep(QUIET);
+    assert.deepEqual(calls, []);
+  }));

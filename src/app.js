@@ -11,6 +11,9 @@ import { hostAllowed, isStateChanging, originAllowed, resolveViewer } from './ht
 import { registerApi } from './http/api.js';
 import { registerAdminApi } from './http/adminApi.js';
 import { registerPages, unauthenticatedPage } from './http/pages.js';
+import { createHub } from './http/ws.js';
+import { createPipeline } from './live/pipeline.js';
+import { createWatcherPool } from './watch/watcher.js';
 
 /** @typedef {import('./config.js').Config} Config */
 /** @typedef {import('./http/guards.js').Listener} Listener */
@@ -56,9 +59,9 @@ export function errorResponse(err) {
  * listener (the owner), both on 127.0.0.1.
  * @param {{config:Config, db:import('node:sqlite').DatabaseSync, now?:()=>number,
  *   emailSender?:{send:(m:{to:string, subject:string, text:string})=>Promise<unknown>},
- *   fetch?:typeof globalThis.fetch}} opts
+ *   fetch?:typeof globalThis.fetch, watcherOptions?:{debounceMs?:number, graceMs?:number, readyTimeoutMs?:number}}} opts
  */
-export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
+export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {} }) {
   const projects = createProjectStore(db);
   const comments = createCommentStore(db);
   const hasMembership = db.prepare('SELECT 1 AS x FROM members WHERE email = ? LIMIT 1');
@@ -77,14 +80,45 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
     return row?.name ?? null;
   };
 
+  // Live pipeline: watcher change -> pipeline recompute -> hub broadcast. The hub and the pipeline refer to
+  // each other, so each is reached through the other's variable.
+  /** @type {ReturnType<typeof createPipeline>} */
+  let pipeline;
+  const watcherPool = createWatcherPool({ ...watcherOptions, onChange: (id) => void pipeline.recompute(id) });
+  const hub = createHub({ projects, comments, watcherPool, snapshot: (id, opts) => pipeline.snapshot(id, opts) });
+  pipeline = createPipeline({ projects, comments, hub });
+
+  // Event listeners run inside the request that emitted them; a failure here must not fail that request.
+  /**
+   * @template T
+   * @param {string} name
+   * @param {(e:T)=>void} fn
+   */
+  const on = (name, fn) =>
+    events.on(name, (/** @type {T} */ e) => {
+      try {
+        fn(e);
+      } catch (err) {
+        console.error(`LiveReview ${name} handler failed:`, err);
+      }
+    });
+  on('member-removed', (/** @type {{projectId:number, email:string}} */ e) => hub.revoke(e.projectId, e.email));
+  on('project-removed', (/** @type {{projectId:number}} */ e) => {
+    hub.dropProject(e.projectId);
+    pipeline.drop(e.projectId);
+  });
+  on('project-changed', (/** @type {{projectId:number}} */ e) => void pipeline.recompute(e.projectId));
+  on('comment-changed', (/** @type {import('./http/ws.js').CommentChange} */ e) => hub.commentChanged(e));
+
   /** @type {{projects:typeof projects, comments:typeof comments, codes:typeof codes, sessions:typeof sessions,
-   *   owner:typeof owner, pipeline?:unknown, hub?:unknown}} */
-  const services = { projects, comments, codes, sessions, owner };
+   *   owner:typeof owner, pipeline:typeof pipeline, hub:typeof hub, watcherPool:typeof watcherPool}} */
+  const services = { projects, comments, codes, sessions, owner, pipeline, hub, watcherPool };
 
   const router = createRouter();
-  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions });
+  registerApi(router, { config, db, now, emailSender: sender, projects, comments, codes, sessions, events });
   registerAdminApi(router, {
     config, db, now, emailSender: sender, projects, comments, sessions, owner, events,
+    boundPorts: () => ({ publicPort: publicListener.port, adminPort: adminListener.port }),
     onConfigChange: () => {
       if (!emailSender) currentSender = buildSender();
     },
@@ -142,10 +176,11 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
   const publicListener = { kind: 'public', port: 0, config, sessions, owner, userName, now };
   /** @type {Listener} */
   const adminListener = { kind: 'admin', port: 0, config, sessions, owner, userName, now };
-  const servers = [publicListener, adminListener].map((listener) => ({
-    listener,
-    server: createServer((req, res) => void handle(req, res, listener)),
-  }));
+  const servers = [publicListener, adminListener].map((listener) => {
+    const server = createServer((req, res) => void handle(req, res, listener));
+    server.on('upgrade', (req, socket, head) => hub.handleUpgrade(req, socket, head, listener));
+    return { listener, server };
+  });
 
   /**
    * @param {import('node:http').Server} server
@@ -163,7 +198,10 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
 
   return {
     services,
-    /** Emits `member-removed` ({projectId, email}) when the owner removes a member (or deletes a project). */
+    /**
+     * Emits `member-removed` ({projectId, email}) when the owner removes a member (or deletes a project),
+     * `project-removed` ({projectId}), `project-changed` ({projectId}) and `comment-changed` (see ws.js).
+     */
     events,
 
     /** @returns {Promise<{publicPort:number, adminPort:number}>} */
@@ -181,6 +219,9 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch }) {
 
     /** @returns {Promise<void>} */
     async stop() {
+      hub.close();
+      await pipeline.close();
+      await watcherPool.closeAll();
       await Promise.all(
         servers.map(
           ({ server }) =>

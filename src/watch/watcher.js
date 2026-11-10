@@ -52,12 +52,12 @@ async function listIgnored(root) {
  */
 function workTreeIgnored(root, { dirs, files }) {
   const rootN = norm(root);
-  const gitN = norm(resolve(root, '.git'));
   return (path) => {
     const p = norm(path);
-    if (p === gitN || p.startsWith(gitN + sep)) return true;
     if (p !== rootN && !p.startsWith(rootN + sep)) return false;
-    if (p.slice(rootN.length).split(sep).includes('node_modules')) return true;
+    const segments = p.slice(rootN.length).split(sep);
+    // `.git` anywhere below the root: the repository's own and those of nested repositories and submodules.
+    if (segments.includes('.git') || segments.includes('node_modules')) return true;
     if (files.has(p)) return true;
     for (let cur = p; cur.length > rootN.length; cur = cur.slice(0, cur.lastIndexOf(sep))) {
       if (dirs.has(cur)) return true;
@@ -82,6 +82,22 @@ function gitDirIgnored(dir) {
 }
 
 /**
+ * Reject when `promise` has not settled within `ms`.
+ * @param {Promise<void>} promise
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function withTimeout(promise, ms) {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`watcher not ready after ${ms} ms`)), ms);
+  });
+  promise.catch(() => {}); // a late failure after the timeout is not unhandled
+  return /** @type {Promise<void>} */ (Promise.race([promise, timeout])).finally(() => clearTimeout(timer));
+}
+
+/**
  * @typedef {object} Entry
  * @property {number} refs
  * @property {import('chokidar').FSWatcher[]} watchers
@@ -93,10 +109,10 @@ function gitDirIgnored(dir) {
 
 /**
  * Pool of per-project file watchers, shared by reference count and closed
- * `graceMs` after their last user releases them.
- * @param {{onChange: (projectId: number) => void, debounceMs?: number, graceMs?: number}} opts
+ * `graceMs` after their last user releases them. Acquire fails if the watcher is not ready within `readyTimeoutMs`.
+ * @param {{onChange: (projectId: number) => void, debounceMs?: number, graceMs?: number, readyTimeoutMs?: number}} opts
  */
-export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000 }) {
+export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000, readyTimeoutMs = 15000 }) {
   /** @type {Map<number, Entry>} */
   const entries = new Map();
   let loggedChangeError = false;
@@ -214,7 +230,7 @@ export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000 
         grace: null,
         closed: false,
       };
-      entry.ready = setup(projectId, entry, root);
+      entry.ready = withTimeout(setup(projectId, entry, root), readyTimeoutMs);
       entries.set(projectId, entry);
       try {
         await entry.ready;

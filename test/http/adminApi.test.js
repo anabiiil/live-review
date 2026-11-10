@@ -276,6 +276,23 @@ test('PUT config applies, normalizes, persists and flags port changes', async ()
   assert.equal(host.json().config.publicHost, HOST);
 });
 
+test('PUT config: restartRequired compares with the ports the listeners actually bound', async () => {
+  const bound = { publicPort: ctx.ports.publicPort, adminPort: ctx.ports.adminPort };
+  try {
+    const same = await adm('/api/admin/config', { method: 'PUT', body: bound });
+    assert.equal(same.status, 200, same.body);
+    assert.equal(same.json().restartRequired, false);
+    const moved = await adm('/api/admin/config', { method: 'PUT', body: { publicPort: bound.publicPort === 4400 ? 4401 : 4400 } });
+    assert.equal(moved.json().restartRequired, true);
+    // Asking for the bound port again needs no restart, although the saved config said otherwise.
+    const back = await adm('/api/admin/config', { method: 'PUT', body: { publicPort: bound.publicPort } });
+    assert.equal(back.json().restartRequired, false);
+  } finally {
+    ctx.config.publicPort = 0;
+    ctx.config.adminPort = 0;
+  }
+});
+
 test('PUT config: resendApiKey omitted or empty keeps, null clears, string sets', async () => {
   const get = async () => (await adm('/api/admin/config')).json();
   const put = (/** @type {unknown} */ body) => adm('/api/admin/config', { method: 'PUT', body });

@@ -86,9 +86,10 @@ function positiveId(v) {
  *   projects:ReturnType<typeof import('../projects/store.js').createProjectStore>,
  *   comments:ReturnType<typeof import('../comments/store.js').createCommentStore>,
  *   codes:ReturnType<typeof import('../auth/codes.js').createCodeService>,
- *   sessions:ReturnType<typeof import('../auth/sessions.js').createSessionService>}} deps
+ *   sessions:ReturnType<typeof import('../auth/sessions.js').createSessionService>,
+ *   events:import('node:events').EventEmitter}} deps
  */
-export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions }) {
+export function registerApi(router, { config, db, now, emailSender, projects, comments, codes, sessions, events }) {
   const upsertName = db.prepare(
     'INSERT INTO users(email, name) VALUES(?, ?) ON CONFLICT(email) DO UPDATE SET name = excluded.name',
   );
@@ -101,6 +102,15 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     if (config.ownerName) upsertName.run(email, config.ownerName);
     return email;
   };
+
+  /**
+   * Tell the live hub (refetch hints, owner notifications) about a successful comment change.
+   * @param {Viewer} viewer
+   * @param {{projectId:number, target:string, id:number}} c
+   * @param {'create'|'reply'|'edit'|'resolve'|'delete'} kind
+   */
+  const commentChanged = (viewer, c, kind) =>
+    events.emit('comment-changed', { projectId: c.projectId, target: c.target, commentId: c.id, kind, byOwner: viewer.kind === 'owner' });
 
   /**
    * The project behind a slug if the viewer may see it; unknown and forbidden are indistinguishable.
@@ -316,6 +326,7 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
       projectId: p.id, target: storedTarget, path: file.path, line, side, anchor,
       authorEmail: authorEmail(v), body: body.body, now: now(), file, extraHidden: p.extraHidden,
     });
+    commentChanged(v, created, 'create');
     sendJson(res, 201, publicComment(created));
   });
 
@@ -323,6 +334,7 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     const v = /** @type {Viewer} */ (viewer);
     const parent = commentFor(v, params.id);
     const reply = comments.reply(parent.id, { authorEmail: authorEmail(v), body: body?.body, now: now() });
+    commentChanged(v, reply, 'reply');
     sendJson(res, 201, publicComment(reply));
   });
 
@@ -336,6 +348,7 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     // edit is the stricter permission (author only), so a combined change cannot half-apply.
     if (text !== undefined) c = comments.edit(c.id, v, text, now());
     if (resolved !== undefined) c = comments.setResolved(c.id, v, resolved);
+    commentChanged(v, c, text !== undefined ? 'edit' : 'resolve');
     sendJson(res, 200, publicComment(c));
   });
 
@@ -343,6 +356,7 @@ export function registerApi(router, { config, db, now, emailSender, projects, co
     const v = /** @type {Viewer} */ (viewer);
     const c = commentFor(v, params.id);
     comments.delete(c.id, v);
+    commentChanged(v, c, 'delete');
     sendJson(res, 200, { ok: true });
   });
 }

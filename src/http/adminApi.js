@@ -150,9 +150,10 @@ const guarded = (fn) => async (ctx) => {
  *   comments:ReturnType<typeof import('../comments/store.js').createCommentStore>,
  *   sessions:ReturnType<typeof import('../auth/sessions.js').createSessionService>,
  *   owner:ReturnType<typeof import('../auth/sessions.js').createOwnerAuth>,
- *   events:import('node:events').EventEmitter, onConfigChange:()=>void}} deps
+ *   events:import('node:events').EventEmitter, onConfigChange:()=>void,
+ *   boundPorts:()=>{publicPort:number, adminPort:number}}} deps
  */
-export function registerAdminApi(router, { config, db, now, emailSender, projects, comments, sessions, owner, events, onConfigChange }) {
+export function registerAdminApi(router, { config, db, now, emailSender, projects, comments, sessions, owner, events, onConfigChange, boundPorts }) {
   const memberRows = db.prepare(
     `SELECT m.email AS email, u.name AS name, m.invited_at AS invitedAt
      FROM members m LEFT JOIN users u ON u.email = m.email WHERE m.project_id = ? ORDER BY m.email`,
@@ -243,9 +244,11 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
     '/api/admin/config',
     ({ res, body }) => {
       const patch = validateConfigPatch(body, config);
+      // Compared with the ports actually bound, not the configured ones (a pending change may already be saved).
+      const bound = boundPorts();
       const restartRequired =
-        (patch.publicPort !== undefined && patch.publicPort !== config.publicPort) ||
-        (patch.adminPort !== undefined && patch.adminPort !== config.adminPort);
+        (patch.publicPort !== undefined && patch.publicPort !== bound.publicPort) ||
+        (patch.adminPort !== undefined && patch.adminPort !== bound.adminPort);
       if (Object.keys(patch).length > 0) {
         saveConfig(patch);
         Object.assign(config, patch);
@@ -289,8 +292,10 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
       for (const key of Object.keys(body)) if (!['name', 'slug', 'extraHidden'].includes(key)) throw invalid(`unknown field: ${key}`);
       const { name, slug, extraHidden } = body;
       const updated = projects.update(before.id, { name, slug, extraHidden });
-      if (JSON.stringify(updated.extraHidden) !== JSON.stringify(before.extraHidden)) {
+      // Idempotent, so it runs whenever the list is sent: a wipe cut short earlier is completed now.
+      if (extraHidden !== undefined) {
         comments.wipeHidden(updated.id, (path) => isHidden(path, updated.extraHidden));
+        events.emit('project-changed', { projectId: updated.id });
       }
       sendJson(res, 200, projectView(updated));
     }),
@@ -306,6 +311,7 @@ export function registerAdminApi(router, { config, db, now, emailSender, project
       const emails = projects.members(p.id);
       projects.remove(p.id);
       for (const email of emails) afterMemberLeft(p.id, email);
+      events.emit('project-removed', { projectId: p.id });
       sendJson(res, 200, { ok: true });
     },
     admin,
