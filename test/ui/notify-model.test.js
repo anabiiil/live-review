@@ -37,4 +37,7 @@ test('unreadBadge and unreadLabel', () => {
 test('internalUrl: same-site paths only', () => {
   assert.equal(internalUrl('/demo/live#c-1'), '/demo/live#c-1');
   for (const bad of ['https://evil.test/', '//evil.test/x', '/\\evil', 'javascript:alert(1)', 42, null]) assert.equal(internalUrl(bad), null, String(bad));
+  // The URL parser drops tabs and newlines, so "/\t/evil.test" would become protocol-relative.
+  for (const bad of ['/\t/evil.test/x', '/\n/evil.test', '/demo\u0000', '/a\u007f']) assert.equal(internalUrl(bad), null, JSON.stringify(bad));
+  assert.equal(internalUrl('/demo/live#c-1', 'http://localhost:4317'), '/demo/live#c-1');
 });

@@ -38,11 +38,19 @@ export const unreadBadge = (n) => (n <= 0 ? '' : n > 99 ? '99+' : String(n));
 export const unreadLabel = (n) => (n > 0 ? `Notifications, ${n} unread` : 'Notifications');
 
 /**
- * A same-site path from the server, or null. Anything else (other origin, protocol-relative) is refused.
+ * A same-site path from the server, or null. Anything else (other origin, protocol-relative, control
+ * characters the URL parser would drop) is refused; the path must resolve to `origin`.
  * @param {unknown} url
+ * @param {string} [origin] the page's origin (location.origin in the browser)
  * @returns {string|null}
  */
-export function internalUrl(url) {
+export function internalUrl(url, origin = typeof location === 'undefined' ? 'https://livereview.invalid' : location.origin) {
   if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//') || url.includes('\\')) return null;
+  if (/[\u0000-\u001f\u007f]/.test(url)) return null;
+  try {
+    if (new URL(url, origin).origin !== origin) return null;
+  } catch {
+    return null;
+  }
   return url;
 }
