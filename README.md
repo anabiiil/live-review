@@ -137,6 +137,15 @@ The reviewer opens the link, enters the 6-digit code that is emailed to them, an
 signed in for 30 days on that browser. Removing a member signs them out of that project immediately and
 invalidates their pending invite.
 
+## How reviewer comments reach you
+
+- **Under the line** in the project page, for everyone on that project.
+- **Admin page → Inbox**, with a count in the tab title, and a desktop notification while the admin page is open
+  (click "Enable desktop notifications" once).
+- **By email**, when email is set up (Resend key + sender address): comments that arrive within a minute of each
+  other come as one email, with the comment text and a link that opens it on this computer. Your own comments are
+  never emailed to you.
+
 ## Security model, in plain words
 
 - LiveReview opens two ports, both on `127.0.0.1` only (nothing on your network can connect): the public one

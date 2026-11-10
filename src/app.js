@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { createOwnerMailer } from './notify/ownerMailer.js';
 import { createServer } from 'node:http';
 import { createProjectStore, StoreError } from './projects/store.js';
 import { createCommentStore, ForbiddenError, NotFoundError, ValidationError } from './comments/store.js';
@@ -76,9 +77,9 @@ export function errorResponse(err) {
  * @param {{config:Config, db:import('node:sqlite').DatabaseSync, now?:()=>number,
  *   emailSender?:{send:(m:{to:string, subject:string, text:string})=>Promise<unknown>},
  *   fetch?:typeof globalThis.fetch, watcherOptions?:{debounceMs?:number, graceMs?:number, readyTimeoutMs?:number},
- *   hubOptions?:{heartbeatMs?:number}}} opts
+ *   hubOptions?:{heartbeatMs?:number}, ownerMailDelayMs?:number}} opts
  */
-export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {}, hubOptions = {} }) {
+export function createApp({ config, db, now = Date.now, emailSender, fetch, watcherOptions = {}, hubOptions = {}, ownerMailDelayMs }) {
   const projects = createProjectStore(db);
   const comments = createCommentStore(db);
   const hasMembership = db.prepare('SELECT 1 AS x FROM members WHERE email = ? LIMIT 1');
@@ -130,7 +131,19 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
     // The last live state still names the old slug.
     void pipeline.recompute(e.projectId);
   });
-  on('comment-changed', (/** @type {import('./http/ws.js').CommentChange} */ e) => hub.commentChanged(e));
+  // Reviewer comments also go to the owner by email (batched), so they arrive with the admin page closed.
+  const ownerMailer = createOwnerMailer({
+    config,
+    sender,
+    getComment: (id) => comments.get(id),
+    getProject: (id) => projects.get(id),
+    adminPort: () => adminListener.port,
+    ...(ownerMailDelayMs !== undefined ? { delayMs: ownerMailDelayMs } : {}),
+  });
+  on('comment-changed', (/** @type {import('./http/ws.js').CommentChange} */ e) => {
+    hub.commentChanged(e);
+    ownerMailer.notify(e);
+  });
 
   /** @type {{projects:typeof projects, comments:typeof comments, codes:typeof codes, sessions:typeof sessions,
    *   owner:typeof owner, pipeline:typeof pipeline, hub:typeof hub, watcherPool:typeof watcherPool}} */
@@ -243,6 +256,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
 
     /** @returns {Promise<void>} */
     async stop() {
+      await ownerMailer.close();
       hub.close();
       await pipeline.close();
       await watcherPool.closeAll();
