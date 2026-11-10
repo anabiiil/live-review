@@ -140,8 +140,11 @@ invalidates their pending invite.
 ## How reviewer comments reach you
 
 - **Under the line** in the project page, for everyone on that project.
-- **Admin page → Inbox**, with a count in the tab title, and a desktop notification while the admin page is open
-  (click "Enable desktop notifications" once).
+- **Comments** (a project's Comments tab, or Admin page → Comments across projects): reply, resolve, jump to the
+  line, or hide a thread for yourself.
+- **The bell** in the top bar: new comments, replies, and resolved or reopened threads, with a toast when they
+  arrive and a desktop notification while the page is in the background (turn it on once from the bell).
+  Reviewers get the same for threads they take part in, so they see when you mark their comment resolved.
 - **By email**, when email is set up (Resend key + sender address): comments that arrive within a minute of each
   other come as one email, with the comment text and a link that opens it on this computer. Your own comments are
   never emailed to you.

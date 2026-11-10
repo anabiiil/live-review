@@ -91,7 +91,7 @@ test('owner resolves a reviewer thread: the reviewer is notified, not the owner'
   assert.deepEqual(n.notification, {
     id: n.notification.id, kind: 'resolved', projectSlug: 'demo', projectName: 'Demo', commentId: c.id, threadId: c.id,
     path: 'src/app.php', line: 3, target: 'live', actorName: 'Olivia', excerpt: 'Why 2 here?', url: `/demo/live#c-${c.id}`,
-    createdAt: n.notification.createdAt, read: false,
+    createdAt: n.notification.createdAt, read: false, yours: true,
   });
   t.live.length = 0;
   t.handle({ commentId: c.id, kind: 'resolve', resolved: false, actorEmail: OWNER });
@@ -114,6 +114,8 @@ test('a reply notifies the owner and the other participants, never the actor', (
   t.handle({ commentId: r.id, kind: 'reply', actorEmail: OWNER });
   assert.deepEqual(t.recipients(), [RANA, SAM]);
   const n = t.live[0].msg.notification;
+  assert.equal(n.yours, true, 'Rana started the thread');
+  assert.equal(t.live[1].msg.notification.yours, false, 'Sam only replied');
   assert.equal(n.commentId, r.id);
   assert.equal(n.threadId, c.id);
   assert.equal(n.excerpt, 'Owner says hi');

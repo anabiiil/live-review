@@ -33,7 +33,7 @@ const NOT_FOUND_HTML = 'Not found.';
 const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your terminal.';
 
 const BASE_CSS = ['/static/css/tokens.css', '/static/css/base.css', '/static/css/shell.css'];
-const APP_CSS = [...BASE_CSS, '/static/css/diff.css'];
+const APP_CSS = [...BASE_CSS, '/static/css/diff.css', '/static/css/comments-page.css', '/static/css/notifications.css'];
 /** @param {string[]} hrefs */
 const links = (hrefs) => hrefs.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n');
 
@@ -285,5 +285,6 @@ export function registerPages(router, { projects, sessions, now }) {
   router.add('GET', '/:slug', projectPage, page);
   router.add('GET', '/:slug/live', projectPage, page);
   router.add('GET', '/:slug/commits', projectPage, page);
+  router.add('GET', '/:slug/comments', projectPage, page);
   router.add('GET', '/:slug/commit/:sha', projectPage, page);
 }

@@ -119,7 +119,7 @@ async function comment(slug, as, line = 2) {
   return res.json();
 }
 
-test('resolve notifications both ways reach the right sockets only; v1 notify still goes to the owner', async () => {
+test('resolve notifications both ways reach the right sockets only; no v1 notify messages', async () => {
   const p = await newProject('Both Ways');
   const rana = await addAndSignIn(p.id, 'rana@example.test');
   const sam = await addAndSignIn(p.id, 'sam@example.test');
@@ -130,7 +130,7 @@ test('resolve notifications both ways reach the right sockets only; v1 notify st
   const c = await comment(p.slug, (o) => pub(`/api/p/${p.slug}/comments`, { ...o, cookie: rana }));
   await sleep(150);
   assert.deepEqual(ownerWs.notes().map((/** @type {any} */ n) => n.kind), ['comment']);
-  assert.ok(ownerWs.messages.some((/** @type {any} */ m) => m.type === 'notify' && m.commentId === c.id), 'v1 notify kept for now');
+  assert.ok(!ownerWs.messages.some((/** @type {any} */ m) => m.type === 'notify'), 'the v1 notify message is gone');
   assert.equal(ranaWs.notes().length, 0);
   assert.equal(samWs.notes().length, 0);
 

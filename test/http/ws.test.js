@@ -217,7 +217,7 @@ test('subscribing to a project the viewer cannot see is silently ignored and acq
   await subscribe(rev, mine.slug);
 });
 
-test('the owner socket gets notify for comments and replies by reviewers; reviewers never do', async () => {
+test('comment changes reach subscribers as refetch hints; the owner gets notification (not v1 notify)', async () => {
   const { project } = await newProject('Notify');
   const cookie = await addAndSignIn(project.id, 'rev-n@example.test');
   assert.equal((await pub('/api/me/name', { method: 'POST', body: { name: 'Rita' }, cookie })).status, 200);
@@ -227,31 +227,24 @@ test('the owner socket gets notify for comments and replies by reviewers; review
   await subscribe(rev, project.slug);
 
   const created = await pub(`/api/p/${project.slug}/comments`, {
-    method: 'POST', cookie, body: { target: 'live', path: 'a.js', line: 2, side: 'new', body: `Why ${'x'.repeat(200)}` },
+    method: 'POST', cookie, body: { target: 'live', path: 'a.js', line: 2, side: 'new', body: 'Why' },
   });
   assert.equal(created.status, 201, created.body);
   const id = created.json().id;
-  const notify = await owner.waitFor((m) => m.type === 'notify' && m.commentId === id);
-  assert.deepEqual(notify, {
-    type: 'notify', slug: project.slug, commentId: id, path: 'a.js', line: 2, author: 'Rita',
-    excerpt: `Why ${'x'.repeat(136)}`, url: `/${project.slug}/live#c-${id}`,
-  });
+  const note = await owner.waitFor((m) => m.type === 'notification' && m.notification.commentId === id);
+  assert.equal(note.notification.actorName, 'Rita');
   await rev.waitFor((m) => m.type === 'comments' && m.target === 'live');
 
   const reply = await pub(`/api/comments/${id}/replies`, { method: 'POST', cookie, body: { body: 'more' } });
   assert.equal(reply.status, 201);
-  await owner.waitFor((m) => m.type === 'notify' && m.commentId === reply.json().id && m.excerpt === 'more');
-
-  // The owner's own comments are not notified.
-  const own = await adm(`/api/comments/${id}/replies`, { method: 'POST', body: { body: 'answer' } });
-  assert.equal(own.status, 201);
+  await owner.waitFor((m) => m.type === 'notification' && m.notification.commentId === reply.json().id);
   const edit = await pub(`/api/comments/${id}`, { method: 'PATCH', cookie, body: { body: 'edited' } });
   assert.equal(edit.status, 200);
   await sleep(QUIET);
-  assert.equal(owner.messages.filter((m) => m.type === 'notify').length, 2);
+  assert.equal(owner.messages.filter((m) => m.type === 'notify').length, 0);
   assert.equal(rev.messages.filter((m) => m.type === 'notify').length, 0);
   // Every change is announced as a refetch hint.
-  assert.ok(rev.messages.filter((m) => m.type === 'comments' && m.slug === project.slug).length >= 4);
+  assert.ok(rev.messages.filter((m) => m.type === 'comments' && m.slug === project.slug).length >= 3);
 });
 
 test('removing a connected reviewer sends revoked and closes their access', async () => {

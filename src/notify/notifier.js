@@ -10,7 +10,8 @@ import { normalizeEmail } from '../db.js';
  * A notification as clients see it (live message and listing).
  * @typedef {{id:number, kind:NotificationKind, projectSlug:string, projectName:string, commentId:number,
  *   threadId:number, path:string, line:number|null, target:string, actorName:string, excerpt:string, url:string,
- *   createdAt:number, read:boolean}} Notification
+ *   createdAt:number, read:boolean, yours:boolean}} Notification
+ * `yours`: the recipient started the thread.
  */
 /** @typedef {{notificationId:number, commentId:number}} Queued */
 /** @typedef {{n:Notification, rootAuthor:string, body:string}} EmailItem */
@@ -119,6 +120,7 @@ export function createNotifier({ db, config, sender, comments, projects, store, 
       url: `/${p.slug}/${view}#c-${about.id}`,
       createdAt: n.createdAt,
       read: n.readAt !== null,
+      yours: root.authorEmail === n.recipientEmail,
     };
   }
 

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  setupSteps, errorMessage, configError, missingFields, inviteStatus, unreadTitle, notificationTitle, internalUrl,
-  threadHref, countByProject, parsePatterns, tabFromHash, normalizeEmail,
+  setupSteps, errorMessage, configError, missingFields, inviteStatus, unreadTitle,
+  parsePatterns, tabFromHash, normalizeEmail,
   createDraftState, setDraft, getDraft, dropDrafts, rememberFocus, takeFocus,
 } from '../../public/js/admin/helpers.js';
 
@@ -67,25 +67,9 @@ test('inviteStatus: sent vs failed wording', () => {
   });
 });
 
-test('unreadTitle and notificationTitle', () => {
+test('unreadTitle', () => {
   assert.equal(unreadTitle(0), 'LiveReview Admin');
   assert.equal(unreadTitle(3), '(3) LiveReview Admin');
-  assert.equal(notificationTitle({ author: 'Alice', path: 'src/a.js', line: 12 }), 'Alice commented on src/a.js:12');
-});
-
-test('internalUrl accepts only same-site paths', () => {
-  assert.equal(internalUrl('/sample/live#c-4'), '/sample/live#c-4');
-  for (const bad of ['//evil.test/x', 'https://evil.test', 'javascript:alert(1)', '/\\evil', '', null, 5]) assert.equal(internalUrl(bad), null, String(bad));
-});
-
-test('threadHref: live and commit targets', () => {
-  assert.equal(threadHref({ slug: 'sample', target: 'live', thread: { id: 7 } }), '/sample/live#c-7');
-  assert.equal(threadHref({ slug: 'sample', target: 'abc1234', thread: { id: 9 } }), '/sample/commit/abc1234#c-9');
-});
-
-test('countByProject keeps first-seen order', () => {
-  const items = [{ slug: 'b', projectName: 'B' }, { slug: 'a', projectName: 'A' }, { slug: 'b', projectName: 'B' }];
-  assert.deepEqual(countByProject(items), [{ slug: 'b', name: 'B', count: 2 }, { slug: 'a', name: 'A', count: 1 }]);
 });
 
 test('parsePatterns trims, drops blanks and duplicates', () => {
@@ -129,8 +113,9 @@ test('drafts: focus is remembered and handed out once; unrelated focus survives 
   assert.equal(takeFocus(d), null);
 });
 
-test('tabFromHash defaults to projects', () => {
-  assert.equal(tabFromHash('#inbox'), 'inbox');
+test('tabFromHash defaults to projects; the v1 inbox address opens comments', () => {
+  assert.equal(tabFromHash('#comments'), 'comments');
+  assert.equal(tabFromHash('#inbox'), 'comments');
   assert.equal(tabFromHash('#settings'), 'settings');
   assert.equal(tabFromHash(''), 'projects');
   assert.equal(tabFromHash('#nope'), 'projects');

@@ -5,7 +5,7 @@ const SHA = /^[0-9a-f]{7,40}$/;
 
 /**
  * @typedef {{name:'login'}|{name:'projects'}|{name:'project', slug:string}|{name:'live', slug:string}
- *   |{name:'commits', slug:string}|{name:'commit', slug:string, sha:string}|{name:'notfound'}} Route
+ *   |{name:'commits', slug:string}|{name:'comments', slug:string}|{name:'commit', slug:string, sha:string}|{name:'notfound'}} Route
  */
 
 /**
@@ -26,6 +26,7 @@ export function parseRoute(pathname) {
   if (segs.length === 1) return { name: 'project', slug: first };
   if (segs.length === 2 && second === 'live') return { name: 'live', slug: first };
   if (segs.length === 2 && second === 'commits') return { name: 'commits', slug: first };
+  if (segs.length === 2 && second === 'comments') return { name: 'comments', slug: first };
   if (segs.length === 3 && second === 'commit' && SHA.test(third)) return { name: 'commit', slug: first, sha: third };
   return { name: 'notfound' };
 }

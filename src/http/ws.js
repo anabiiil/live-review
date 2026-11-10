@@ -23,19 +23,17 @@ import { hostAllowed, originAllowed, resolveViewer, sessionCheck } from './guard
  */
 
 const MAX_PAYLOAD = 4096;
-const EXCERPT = 140;
 const STATUS_TEXT = { 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 421: 'Misdirected Request' };
 
 /**
- * The WebSocket hub: viewers subscribe to projects they may see and receive live diffs, comment refetch
- * hints and (owner only) notifications of new comments.
+ * The WebSocket hub: viewers subscribe to projects they may see and receive live diffs and comment refetch
+ * hints; notifications are pushed to a viewer's sockets with sendToOwner / sendToEmail.
  * @param {{projects:ReturnType<typeof import('../projects/store.js').createProjectStore>,
- *   comments:ReturnType<typeof import('../comments/store.js').createCommentStore>,
  *   watcherPool:{acquire:(projectId:number, root:string)=>Promise<void>, release:(projectId:number)=>void, active:()=>number[]},
  *   snapshot:(projectId:number, opts:{refresh:boolean})=>Promise<LiveMessage|null>,
  *   heartbeatMs?:number}} deps
  */
-export function createHub({ projects, comments, watcherPool, snapshot, heartbeatMs = 30000 }) {
+export function createHub({ projects, watcherPool, snapshot, heartbeatMs = 30000 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   /** @type {Set<Client>} */
   const clients = new Set();
@@ -249,28 +247,13 @@ export function createHub({ projects, comments, watcherPool, snapshot, heartbeat
 
     /**
      * A comment was created, replied to, edited, resolved or deleted: tell the project's subscribers to
-     * refetch, and tell the owner about new comments and replies by others.
+     * refetch. (Who gets a notification is the notifier's business.)
      * @param {CommentChange} change
      */
-    commentChanged({ projectId, target, commentId, kind, byOwner }) {
+    commentChanged({ projectId, target }) {
       const p = projects.get(projectId);
       if (!p) return;
       broadcast(projectId, { type: 'comments', slug: p.slug, target });
-      if ((kind !== 'create' && kind !== 'reply') || byOwner) return;
-      const c = comments.get(commentId);
-      if (!c) return;
-      const anchor = `#c-${c.id}`;
-      const msg = {
-        type: 'notify',
-        slug: p.slug,
-        commentId: c.id,
-        path: c.path,
-        line: c.line,
-        author: c.authorName ?? c.authorEmail,
-        excerpt: c.body.slice(0, EXCERPT),
-        url: c.target === 'live' ? `/${p.slug}/live${anchor}` : `/${p.slug}/commit/${c.target}${anchor}`,
-      };
-      for (const client of clients) if (client.kind === 'admin') send(client, msg);
     },
 
     /**

@@ -16,7 +16,10 @@ const run = promisify(execFile);
 const HOST = 'review.example.test';
 const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
 
-const APP_CSS = ['/static/css/tokens.css', '/static/css/base.css', '/static/css/shell.css', '/static/css/diff.css'];
+const APP_CSS = [
+  '/static/css/tokens.css', '/static/css/base.css', '/static/css/shell.css', '/static/css/diff.css',
+  '/static/css/comments-page.css', '/static/css/notifications.css',
+];
 /** @param {string} html @returns {string[]} stylesheet hrefs in order */
 const stylesheets = (html) => [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]);
 
@@ -67,7 +70,7 @@ after(async () => {
 });
 
 test('every page route returns the app shell', async () => {
-  const paths = ['/', '/sample', '/sample/live', '/sample/commits', `/sample/commit/${ctx.sha}`];
+  const paths = ['/', '/sample', '/sample/live', '/sample/commits', '/sample/comments', `/sample/commit/${ctx.sha}`];
   for (const path of paths) {
     const res = await pub(path, ctx.cookie);
     assert.equal(res.status, 200, path);
@@ -102,7 +105,7 @@ test('/admin with the owner cookie returns the admin shell; without it, the term
 test('admin modules and stylesheet are served from the admin listener and parse', async () => {
   const base = `127.0.0.1:${ctx.ports.adminPort}`;
   const files = (await listJs(PUBLIC_DIR)).filter((f) => f === 'admin.js' || f.startsWith('js/admin/'));
-  assert.ok(files.length >= 7, files.join(','));
+  assert.ok(files.length >= 6, files.join(','));
   for (const file of files) {
     const res = await request(ctx.ports.adminPort, { path: `/static/${file}`, headers: { Host: base } });
     assert.equal(res.status, 200, file);

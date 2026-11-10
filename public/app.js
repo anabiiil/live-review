@@ -9,6 +9,8 @@ import { projectPage } from './js/views/project.js';
 import { liveBody } from './js/views/live.js';
 import { commitsBody } from './js/views/commits.js';
 import { commitBody } from './js/views/commit.js';
+import { commentsBody } from './js/views/comments.js';
+import { createNotificationCenter } from './js/notifications.js';
 
 const host = /** @type {HTMLElement} */ (document.getElementById('app'));
 const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your terminal.';
@@ -16,6 +18,7 @@ const ADMIN_UNAUTHORIZED = 'Open LiveReview from the link printed in your termin
 /** @type {import('./js/chrome.js').Ctx} */
 const ctx = {
   me: null,
+  notices: null,
   socket: createSocket(),
   navigate(path, { replace = false } = {}) {
     if (replace) history.replaceState(null, '', path);
@@ -39,6 +42,7 @@ onUnauthorized(async () => {
     const probe = await fetch('/login', { credentials: 'same-origin', redirect: 'manual' });
     current?.destroy();
     current = null;
+    dropNotices();
     ctx.socket.stop();
     if (probe.status === 401) setChildren(host, h('div', { class: 'page' }, messageBox('Not signed in', ADMIN_UNAUTHORIZED)));
     else location.assign('/login');
@@ -49,7 +53,16 @@ onUnauthorized(async () => {
 
 async function ensureMe() {
   if (!ctx.me) ctx.me = await get('/api/me');
+  // One notification center per signed-in page load; its bell is mounted into each top bar.
+  if (ctx.me && !ctx.notices) {
+    ctx.notices = createNotificationCenter({ socket: ctx.socket, me: /** @type {any} */ (ctx.me), navigate: (url) => ctx.navigate(url) });
+  }
   return ctx.me;
+}
+
+function dropNotices() {
+  ctx.notices?.destroy();
+  ctx.notices = null;
 }
 
 async function render() {
@@ -68,6 +81,7 @@ async function render() {
 
   try {
     if (route.name === 'login') {
+      dropNotices();
       adopt(loginView(ctx, host));
       return;
     }
@@ -85,6 +99,7 @@ async function render() {
     if (route.name === 'projects') adopt(projectsView(ctx, host));
     else if (route.name === 'live') adopt(projectPage(ctx, host, route.slug, 'live', liveBody));
     else if (route.name === 'commits') adopt(projectPage(ctx, host, route.slug, 'commits', commitsBody));
+    else if (route.name === 'comments') adopt(projectPage(ctx, host, route.slug, 'comments', commentsBody));
     else if (route.name === 'commit') {
       const { sha } = route;
       adopt(projectPage(ctx, host, route.slug, 'commits', (p) => commitBody(p, sha)));

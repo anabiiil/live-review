@@ -120,48 +120,6 @@ export function inviteStatus(result) {
 export const unreadTitle = (unread) => (unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE);
 
 /**
- * Title of the desktop notification for a `notify` message.
- * @param {{author:string, path:string, line:number}} msg
- */
-export const notificationTitle = (msg) => `${msg.author} commented on ${msg.path}:${msg.line}`;
-
-/**
- * A same-site path from the server, or null. Anything else (other origin, protocol-relative) is refused.
- * @param {unknown} url
- * @returns {string|null}
- */
-export function internalUrl(url) {
-  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//') || url.includes('\\')) return null;
-  return url;
-}
-
-/**
- * Link to a thread in the project page (served on the admin listener too).
- * @param {{slug:string, target:string, thread:{id:number}}} item an inbox entry
- * @returns {string}
- */
-export function threadHref({ slug, target, thread }) {
-  const s = encodeURIComponent(slug);
-  return target === 'live' ? `/${s}/live#c-${thread.id}` : `/${s}/commit/${encodeURIComponent(target)}#c-${thread.id}`;
-}
-
-/**
- * Open threads per project, in the order projects first appear (the inbox is newest first).
- * @param {{slug:string, projectName:string}[]} items
- * @returns {{slug:string, name:string, count:number}[]}
- */
-export function countByProject(items) {
-  /** @type {Map<string,{slug:string, name:string, count:number}>} */
-  const map = new Map();
-  for (const it of items) {
-    const row = map.get(it.slug);
-    if (row) row.count += 1;
-    else map.set(it.slug, { slug: it.slug, name: it.projectName, count: 1 });
-  }
-  return [...map.values()];
-}
-
-/**
  * Patterns typed one per line → list (trimmed, blanks dropped, duplicates removed).
  * @param {string} text
  * @returns {string[]}
@@ -217,11 +175,12 @@ export function takeFocus(d) {
 }
 
 /**
- * Tab id from a location hash.
+ * Tab id from a location hash (`#inbox`, the v1 address, opens Comments).
  * @param {string} hash
- * @returns {'projects'|'inbox'|'settings'}
+ * @returns {'projects'|'comments'|'settings'}
  */
 export function tabFromHash(hash) {
   const t = hash.replace(/^#/, '');
-  return t === 'inbox' || t === 'settings' ? t : 'projects';
+  if (t === 'inbox') return 'comments';
+  return t === 'comments' || t === 'settings' ? t : 'projects';
 }

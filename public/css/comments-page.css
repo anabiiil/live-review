@@ -1,0 +1,130 @@
+/* Comments page (a project's Comments tab and the admin Comments tab): filters, file groups, thread cards
+   with a code snippet. The conversation inside a card is the diff's thread component (diff.css). */
+
+.comments-page { max-width: 860px; }
+.comments-page .page-head { margin-bottom: var(--s3); }
+
+/* ---- filters -------------------------------------------------------------------------- */
+.comments-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  margin-bottom: var(--s5);
+}
+.seg-count { margin-inline-start: 6px; color: var(--ink-soft); font-variant-numeric: tabular-nums; font-weight: 400; }
+.seg-btn[aria-pressed="true"] .seg-count { color: var(--ink); }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  min-height: 32px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.check input { margin: 0; width: 16px; height: 16px; }
+.comments-filters button.link { color: var(--ink-soft); }
+.comments-filters button.link:hover { color: var(--cobalt); }
+
+/* ---- file groups ---------------------------------------------------------------------- */
+.cgroup + .cgroup { margin-top: var(--s6); }
+.cgroup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s3);
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+.cgroup-project { font-weight: 600; }
+.cgroup-path { font: 500 var(--fs-13) / 1.4 var(--mono); overflow-wrap: anywhere; }
+.cgroup-count { color: var(--ink-soft); font-size: var(--fs-12); font-weight: 400; }
+
+/* ---- thread card ---------------------------------------------------------------------- */
+.ccard {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sheet);
+  overflow: hidden;
+}
+.ccard + .ccard { margin-top: var(--s3); }
+/* An open thread wears the highlighter at its edge, as in the margin of the diff. */
+.ccard:not(.resolved):not(.is-hidden) { box-shadow: inset 3px 0 0 var(--hl); }
+.ccard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s2);
+  min-height: 40px;
+  padding: 4px var(--s2) 4px var(--s3);
+  border-bottom: 1px solid var(--rule);
+}
+.ccard.is-hidden .ccard-head { border-bottom: 0; }
+.ccard-where { font: 500 var(--fs-13) / 1.4 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+a.ccard-where:hover { color: var(--cobalt); }
+.ccard-place { color: var(--ink-soft); font-size: var(--fs-12); }
+.ccard-place.stale { padding: 0 6px; border-radius: 3px; background: var(--sheet-2); }
+.ccard-project { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
+.ccard-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--ink-soft);
+  font: 500 var(--fs-13) / 1 var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ccard-action svg.icon { width: 14px; height: 14px; vertical-align: 0; }
+.ccard-action:hover { background: var(--sheet-2); color: var(--ink); text-decoration: none; }
+
+.snippet {
+  padding: 6px 0;
+  overflow-x: auto;
+  background: var(--sheet-2);
+  border-bottom: 1px solid var(--rule);
+  font: var(--fs-13) / var(--lh-code) var(--mono);
+  text-align: left;
+}
+.sn-line { display: flex; min-width: max-content; }
+.sn-no {
+  flex: none;
+  width: 5ch;
+  padding: 0 var(--s2) 0 0;
+  color: var(--ink-soft);
+  text-align: right;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.sn-text { padding: 0 var(--s3) 0 var(--s2); white-space: pre; color: var(--ink-soft); }
+.sn-line.focus { background: var(--hl-wash); box-shadow: inset 3px 0 0 var(--hl); }
+.sn-line.focus .sn-no, .sn-line.focus .sn-text { color: var(--ink); }
+.snippet-note { margin: 0; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--rule); color: var(--ink-soft); font-size: var(--fs-13); }
+
+/* The thread sits flush inside the card. */
+.ccard .thread { max-width: none; border: 0; border-radius: 0; }
+.ccard-folded {
+  margin: 0;
+  padding: 0 var(--s3) var(--s2);
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: var(--fs-13);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ccard-folded strong { color: var(--ink); font-weight: 600; }
+.ccard.is-hidden { background: transparent; border-style: dashed; }
+
+@media (max-width: 600px) {
+  .comments-filters { gap: var(--s2) var(--s3); }
+  .comments-filters .seg { width: 100%; }
+  .comments-filters .seg-btn { flex: 1; }
+  .ccard-head { padding-left: var(--s2); }
+  .ccard-action { padding: 0 6px; }
+}

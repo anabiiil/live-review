@@ -104,7 +104,7 @@ export function createApp({ config, db, now = Date.now, emailSender, fetch, watc
   /** @type {ReturnType<typeof createPipeline>} */
   let pipeline;
   const watcherPool = createWatcherPool({ ...watcherOptions, onChange: (id) => void pipeline.recompute(id) });
-  const hub = createHub({ ...hubOptions, projects, comments, watcherPool, snapshot: (id, opts) => pipeline.snapshot(id, opts) });
+  const hub = createHub({ ...hubOptions, projects, watcherPool, snapshot: (id, opts) => pipeline.snapshot(id, opts) });
   pipeline = createPipeline({ projects, comments, hub });
 
   // Event listeners run inside the request that emitted them; a failure here must not fail that request.

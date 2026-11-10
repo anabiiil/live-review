@@ -11,6 +11,8 @@ import { initials, openCount } from './shell-model.js';
  * @property {{email:string, name:string|null, kind:'owner'|'reviewer'}|null} me
  * @property {ReturnType<typeof import('./ws.js').createSocket>} socket
  * @property {(path:string, opts?:{replace?:boolean})=>void} navigate
+ * @property {ReturnType<typeof import('./notifications.js').createNotificationCenter>|null} [notices] the
+ *   notification center (signed in only)
  */
 
 /** @typedef {{slug:string, name:string, open:number}} ProjectSummary */
@@ -30,7 +32,7 @@ function menuButton(trigger, items, { align = 'start', label }) {
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
 
-  const entries = () => /** @type {HTMLElement[]} */ ([...menu.querySelectorAll('[role="menuitem"]')]);
+  const entries = () => /** @type {HTMLElement[]} */ ([...menu.querySelectorAll('[role^="menuitem"]')]);
   /** @param {boolean} [focusTrigger] */
   const close = (focusTrigger) => {
     if (menu.hidden) return;
@@ -45,6 +47,7 @@ function menuButton(trigger, items, { align = 'start', label }) {
     entries()[0]?.focus();
   };
   trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  // Choosing an item closes the menu; a checkbox item stays open so its new state shows.
   menu.addEventListener('click', (e) => {
     if (e.target instanceof Element && e.target.closest('[role="menuitem"]')) close();
   });
@@ -144,7 +147,7 @@ export function createChrome(ctx, { project, projects = [], tab } = {}) {
     : null;
 
   // ---- notifications slot (filled by the notification center) and avatar menu ----
-  const bellSlot = h('div', { class: 'bell-slot' });
+  const bellSlot = h('div', { class: 'bell-slot' }, ctx.notices?.bell ?? null);
   /** @type {HTMLElement|null} */
   let avatar = null;
   if (ctx.me) {
@@ -166,6 +169,7 @@ export function createChrome(ctx, { project, projects = [], tab } = {}) {
       () => [
         h('div', { class: 'menu-who' }, h('p', { class: 'menu-who-name', dir: 'auto', text: me.name || me.email }), me.name ? h('p', { class: 'menu-who-email', text: me.email }) : null),
         h('div', { class: 'menu-sep', role: 'separator' }),
+        ctx.notices ? ctx.notices.emailItem() : null,
         me.kind === 'reviewer'
           ? h('button', { class: 'menu-item', role: 'menuitem', type: 'button', onclick: signOut }, icon('log-out'), 'Sign out')
           : // The owner reaches the admin page from the admin listener; /admin is not served on the public one.
