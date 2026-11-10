@@ -278,6 +278,28 @@ test('a comment deleted before the email goes out is skipped', async () => {
   assert.equal(t.sent.length, 0);
 });
 
+test('a reply deleted before the email goes out is skipped (the thread is still there)', async () => {
+  const t = setup();
+  const c = t.top(RANA);
+  const r = t.reply(c.id, SAM, 'second thoughts');
+  t.handle({ commentId: r.id, kind: 'reply', actorEmail: SAM });
+  t.comments.delete(r.id, { kind: 'owner', email: OWNER, name: null });
+  await sleep(DELAY * 3);
+  assert.equal(t.sent.length, 0, 'no email that would show the thread root as the reply');
+});
+
+test('links: rewritten threads open in Changes, hidden-file threads open the comments page', () => {
+  const t = setup();
+  const rewritten = t.top(RANA, { target: SHA });
+  t.db.prepare('UPDATE comments SET rewritten = 1 WHERE id = ?').run(rewritten.id);
+  const commit = t.top(RANA, { target: SHA });
+  const hidden = t.top(RANA);
+  t.db.prepare('UPDATE comments SET anchor = NULL, hidden = 1 WHERE id = ?').run(hidden.id);
+  for (const c of [rewritten, commit, hidden]) t.handle({ commentId: c.id, kind: 'resolve', resolved: true, actorEmail: OWNER });
+  const urls = t.live.map((l) => l.msg.notification.url);
+  assert.deepEqual(urls, [`/demo/live#c-${rewritten.id}`, `/demo/commit/${SHA}#c-${commit.id}`, '/demo/comments']);
+});
+
 test('close() sends what is pending right away', async () => {
   const t = setup();
   t.handle({ commentId: t.top(RANA).id, kind: 'create', actorEmail: RANA });

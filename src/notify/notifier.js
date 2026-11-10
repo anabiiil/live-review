@@ -104,7 +104,13 @@ export function createNotifier({ db, config, sender, comments, projects, store, 
       id = row?.id;
     }
     const about = (id !== undefined && id !== root.id && comments.get(id)) || root;
-    const view = root.target === 'live' ? 'live' : `commit/${root.target}`;
+    // Same places as the comments page's "Show in code": rewritten history is read in Changes, and a
+    // hidden file has no code to show, so its thread opens on the comments page.
+    const url = root.hidden
+      ? `/${p.slug}/comments`
+      : root.target === 'live' || root.rewritten
+        ? `/${p.slug}/live#c-${about.id}`
+        : `/${p.slug}/commit/${root.target}#c-${about.id}`;
     return {
       id: n.id,
       kind: n.kind,
@@ -117,7 +123,7 @@ export function createNotifier({ db, config, sender, comments, projects, store, 
       target: root.target,
       actorName: displayName(n.actorEmail),
       excerpt: shorten(about.body, EXCERPT),
-      url: `/${p.slug}/${view}#c-${about.id}`,
+      url,
       createdAt: n.createdAt,
       read: n.readAt !== null,
       yours: root.authorEmail === n.recipientEmail,
@@ -151,6 +157,8 @@ export function createNotifier({ db, config, sender, comments, projects, store, 
     /** @type {EmailItem[]} */
     const items = [];
     for (const q of entry.items) {
+      // The comment it is about (a reply, or the thread itself) was deleted while the batch waited.
+      if (!comments.get(q.commentId)) continue;
       const stored = store.get(q.notificationId);
       const n = stored && present(stored, q.commentId);
       const root = n && comments.get(n.threadId);
