@@ -16,6 +16,7 @@ import { attachOnCommit, markRewritten, reanchorLive } from '../comments/reancho
  * @property {boolean} initialized a head has been seen (the first run never attaches)
  * @property {string|null} headSha head of the last successful run
  * @property {LiveMessage|null} last
+ * @property {string|null} sent serialised last message broadcast to subscribers
  * @property {boolean} logged an unexpected error was already logged
  */
 
@@ -37,7 +38,7 @@ export function createPipeline({ projects, comments, hub }) {
   function stateOf(projectId) {
     let st = states.get(projectId);
     if (!st) {
-      st = { running: null, pending: false, initialized: false, headSha: null, last: null, logged: false };
+      st = { running: null, pending: false, initialized: false, headSha: null, last: null, sent: null, logged: false };
       states.set(projectId, st);
     }
     return st;
@@ -87,7 +88,11 @@ export function createPipeline({ projects, comments, hub }) {
       const now = projects.get(projectId);
       if (!now || states.get(projectId) !== st) return;
       st.last = { type: 'live', slug: now.slug, head, files, untrackedTruncated };
-      hub.broadcast(projectId, st.last);
+      // Subscribers already have an identical state: tell them only about other comment targets.
+      const sent = JSON.stringify(st.last);
+      if (sent === st.sent) targets.delete('live');
+      else hub.broadcast(projectId, st.last);
+      st.sent = sent;
       for (const target of targets) hub.broadcast(projectId, { type: 'comments', slug: now.slug, target });
     } catch (err) {
       if (!(err instanceof RepoError) && !st.logged) {
@@ -97,6 +102,7 @@ export function createPipeline({ projects, comments, hub }) {
       const now = projects.get(projectId);
       if (!now || states.get(projectId) !== st) return;
       st.last = { type: 'error', slug: now.slug, error: 'project-unavailable' };
+      st.sent = null;
       hub.broadcast(projectId, st.last);
     }
   }

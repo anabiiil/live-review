@@ -1,15 +1,15 @@
-import { watch } from 'chokidar';
-import { resolve, sep } from 'node:path';
+import { watch } from 'node:fs';
+import { lstat } from 'node:fs/promises';
+import { join, resolve, sep } from 'node:path';
 import { runGit } from '../git/run.js';
 import { gitDir } from '../git/repo.js';
 
 /**
- * Entries of the git directory that signal commits, checkouts and staging.
- * Git replaces HEAD and index by renaming a `.lock` file over them, which
- * file-level watchers can miss, so the creation and removal of the lock files
- * is treated as the signal too.
+ * Top-level entries of a git directory that signal commits, checkouts and
+ * staging (`refs` is watched recursively on its own). Git replaces HEAD and
+ * index by renaming a `.lock` file over them, so the lock files count too.
  */
-const GIT_WATCHED = new Set(['HEAD', 'HEAD.lock', 'index', 'index.lock', 'refs', 'packed-refs', 'packed-refs.lock']);
+const GIT_WATCHED = new Set(['HEAD', 'HEAD.lock', 'index', 'index.lock', 'packed-refs', 'packed-refs.lock']);
 
 /**
  * Normalize a path for comparison (case-insensitive on Windows).
@@ -67,18 +67,18 @@ function workTreeIgnored(root, { dirs, files }) {
 }
 
 /**
- * `ignored` predicate for a git directory: only HEAD, index, refs and packed-refs matter.
- * @param {string} dir
- * @returns {(path: string) => boolean}
+ * Identity of a git directory entry for change detection: atime is left out,
+ * because git's own reads bump it (APFS, NTFS last-access) and must not count.
+ * @param {string} path
+ * @returns {Promise<string>}
  */
-function gitDirIgnored(dir) {
-  const dirN = norm(dir);
-  return (path) => {
-    const p = norm(path);
-    if (p === dirN) return false;
-    if (!p.startsWith(dirN + sep)) return true;
-    return !GIT_WATCHED.has(p.slice(dirN.length + 1).split(sep)[0]);
-  };
+async function signature(path) {
+  try {
+    const st = await lstat(path);
+    return `${st.ctimeMs}:${st.mtimeMs}:${st.size}:${st.ino}`;
+  } catch {
+    return 'missing';
+  }
 }
 
 /**
@@ -100,7 +100,8 @@ function withTimeout(promise, ms) {
 /**
  * @typedef {object} Entry
  * @property {number} refs
- * @property {import('chokidar').FSWatcher[]} watchers
+ * @property {import('node:fs').FSWatcher[]} watchers
+ * @property {Map<string, string>} seen last signature of each git directory entry that fired
  * @property {Promise<void>} ready
  * @property {ReturnType<typeof setTimeout>|null} debounce
  * @property {ReturnType<typeof setTimeout>|null} grace
@@ -139,6 +140,71 @@ export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000,
   }
 
   /**
+   * A git directory entry fired: schedule only when it really changed (ctime,
+   * mtime, size or inode differ, or it appeared or vanished). Lock files are
+   * written only by git commands that change state, so they always count.
+   * @param {number} projectId
+   * @param {Entry} entry
+   * @param {string} path
+   */
+  async function gitEntryEvent(projectId, entry, path) {
+    if (path.endsWith('.lock')) {
+      schedule(projectId, entry);
+      return;
+    }
+    const sig = await signature(path);
+    if (entry.seen.get(path) === sig) return;
+    entry.seen.set(path, sig);
+    schedule(projectId, entry);
+  }
+
+  /**
+   * Create one fs watcher on `path` for this entry.
+   * @param {number} projectId
+   * @param {Entry} entry
+   * @param {string} path
+   * @param {boolean} recursive
+   * @param {(name: string|null) => void} listener
+   */
+  function addWatcher(projectId, entry, path, recursive, listener) {
+    if (entry.closed) return;
+    const w = watch(path, { recursive, persistent: true }, (_event, name) => {
+      if (entry.closed) return;
+      listener(name == null ? null : String(name));
+    });
+    w.on('error', (err) => console.error(`watcher error (project ${projectId}):`, err));
+    entry.watchers.push(w);
+  }
+
+  /**
+   * Watch a git directory: its top-level HEAD/index/packed-refs entries and `refs/` recursively.
+   * @param {number} projectId
+   * @param {Entry} entry
+   * @param {string} dir
+   */
+  async function watchGitDir(projectId, entry, dir) {
+    await Promise.all(
+      ['HEAD', 'index', 'packed-refs'].map(async (name) => {
+        const p = join(dir, name);
+        entry.seen.set(p, await signature(p));
+      }),
+    );
+    if (entry.closed) return;
+    addWatcher(projectId, entry, dir, false, (name) => {
+      if (name === null) schedule(projectId, entry);
+      else if (GIT_WATCHED.has(name)) void gitEntryEvent(projectId, entry, join(dir, name));
+    });
+    const refs = join(dir, 'refs');
+    if ((await signature(refs)) === 'missing' || entry.closed) return; // a linked worktree's own git dir has none
+    addWatcher(projectId, entry, refs, true, (name) => {
+      if (name === null) schedule(projectId, entry);
+      else void gitEntryEvent(projectId, entry, join(refs, name));
+    });
+  }
+
+  /**
+   * One recursive fs watcher for the working tree (a single FSEvents stream on
+   * macOS, one ReadDirectoryChangesW handle on Windows) plus the git directory.
    * @param {number} projectId
    * @param {Entry} entry
    * @param {string} root
@@ -152,38 +218,13 @@ export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000,
       ),
     ]);
     if (entry.closed) return;
-    /** @type {Array<[string, (p: string) => boolean, boolean]>} */
-    const targets = [
-      [root, workTreeIgnored(root, ignored), false],
-      [dir, gitDirIgnored(dir), true],
-    ];
+    const isIgnored = workTreeIgnored(root, ignored);
+    addWatcher(projectId, entry, root, true, (name) => {
+      if (name === null || !isIgnored(resolve(root, name))) schedule(projectId, entry);
+    });
+    await watchGitDir(projectId, entry, dir);
     // In a linked worktree, branch refs live in the common git directory.
-    if (norm(common) !== norm(dir)) targets.push([common, gitDirIgnored(common), true]);
-
-    await Promise.all(
-      targets.map(([path, isIgnored, isGitDir]) => {
-        const w = watch(path, {
-          ignored: isIgnored,
-          ignoreInitial: true,
-          followSymlinks: false,
-          awaitWriteFinish: false,
-          atomic: true,
-        });
-        entry.watchers.push(w);
-        w.on('all', () => schedule(projectId, entry));
-        if (isGitDir) {
-          // chokidar can drop the lock-and-rename dance git uses to replace
-          // index and HEAD; the raw fs events are reliable, so use them too.
-          w.on('raw', (_event, name, details) => {
-            const watched = typeof details?.watchedPath === 'string' ? norm(details.watchedPath) : null;
-            if (watched === norm(path) && !GIT_WATCHED.has(String(name))) return;
-            schedule(projectId, entry);
-          });
-        }
-        w.on('error', (err) => console.error(`watcher error (project ${projectId}):`, err));
-        return new Promise((done) => w.once('ready', done));
-      }),
-    );
+    if (norm(common) !== norm(dir) && !entry.closed) await watchGitDir(projectId, entry, common);
   }
 
   /** @param {Entry} entry */
@@ -193,7 +234,7 @@ export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000,
     if (entry.grace) clearTimeout(entry.grace);
     entry.debounce = entry.grace = null;
     await entry.ready.catch(() => {});
-    await Promise.all(entry.watchers.map((w) => w.close().catch(() => {})));
+    for (const w of entry.watchers) w.close();
   }
 
   /**
@@ -225,6 +266,7 @@ export function createWatcherPool({ onChange, debounceMs = 300, graceMs = 60000,
       const entry = {
         refs: 1,
         watchers: [],
+        seen: new Map(),
         ready: Promise.resolve(),
         debounce: null,
         grace: null,

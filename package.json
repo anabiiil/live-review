@@ -12,7 +12,6 @@
     "test": "node --import ./test/helpers/quiet-sqlite.js --test --test-concurrency=1 \"test/**/*.test.js\""
   },
   "dependencies": {
-    "chokidar": "^4",
     "diff2html": "^3",
     "ws": "^8"
   },

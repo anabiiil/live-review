@@ -231,12 +231,17 @@ test('pipeline: concurrent recomputes coalesce into one follow-up run; the first
     const sent = [];
     const pipeline = createPipeline({ projects, comments, hub: { broadcast: (projectId, msg) => sent.push({ projectId, msg }) } });
 
+    const live = () => sent.filter((s) => s.msg.type === 'live').length;
     await Promise.all([1, 2, 3, 4, 5].map(() => pipeline.recompute(p.id)));
-    assert.equal(sent.filter((s) => s.msg.type === 'live').length, 2);
+    assert.equal(live(), 1, 'the follow-up run found the same state and did not rebroadcast it');
     assert.equal((await pipeline.snapshot(p.id))?.type, 'live');
-    assert.equal(sent.filter((s) => s.msg.type === 'live').length, 2, 'snapshot reuses the last result');
-    await pipeline.snapshot(p.id, { refresh: true });
-    assert.equal(sent.filter((s) => s.msg.type === 'live').length, 3);
+    assert.equal(live(), 1, 'snapshot reuses the last result');
+    assert.equal((await pipeline.snapshot(p.id, { refresh: true }))?.type, 'live');
+    assert.equal(live(), 1, 'an unchanged state is not broadcast again');
+    await repo.write('b.js', 'new\n');
+    await pipeline.recompute(p.id);
+    assert.equal(live(), 2, 'a changed state is broadcast');
+    assert.equal(sent.filter((s) => s.msg.type === 'comments' && s.msg.target === 'live').length, 2);
 
     // A commit made before the pipeline ever saw this project is not attached: the comment is outdated instead.
     const lines = ['one', 'TWO', 'three', ''];

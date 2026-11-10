@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createWatcherPool } from '../../src/watch/watcher.js';
+import { liveDiff } from '../../src/git/diff.js';
+import { runGit } from '../../src/git/run.js';
 import { makeTmpRepo } from '../helpers/tmpRepo.js';
 
 const DEBOUNCE = 50;
@@ -259,4 +261,44 @@ test('writes inside a nested repository or submodule .git directory are ignored'
     writeFileSync(join(repo.dir, 'vendor', 'lib', '.git', 'refs', 'x'), 'x\n');
     await sleep(QUIET);
     assert.deepEqual(calls, []);
+  }));
+
+test('our own git reads do not fire onChange (no recompute loop)', () =>
+  withPool(async ({ repo, pool, calls }) => {
+    await repo.write('a.txt', 'a\n');
+    await repo.commit('init');
+    await repo.write('a.txt', 'changed\n');
+    await pool.acquire(1, repo.dir);
+    await sleep(SETTLE);
+    await liveDiff(repo.dir);
+    await liveDiff(repo.dir);
+    await runGit(repo.dir, ['status']);
+    await sleep(1500);
+    assert.deepEqual(calls, []);
+  }));
+
+/** Open file descriptors of this process, or null where they cannot be listed. */
+function openFds() {
+  for (const dir of ['/proc/self/fd', '/dev/fd']) {
+    try {
+      return readdirSync(dir).length;
+    } catch {
+      // try the next one
+    }
+  }
+  return null;
+}
+
+test('watching a 2,000-file repository opens only a handful of file descriptors', { skip: process.platform === 'win32' }, () =>
+  withPool(async ({ repo, pool }) => {
+    for (let d = 0; d < 20; d++) {
+      mkdirSync(join(repo.dir, `d${d}`));
+      for (let f = 0; f < 100; f++) writeFileSync(join(repo.dir, `d${d}`, `f${f}.txt`), `${d}/${f}\n`);
+    }
+    await repo.commit('init');
+    const before = openFds();
+    assert.notEqual(before, null);
+    await pool.acquire(1, repo.dir);
+    const after = /** @type {number} */ (openFds());
+    assert.ok(after - /** @type {number} */ (before) < 50, `fd growth ${after - /** @type {number} */ (before)}`);
   }));

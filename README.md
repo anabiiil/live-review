@@ -41,7 +41,7 @@ without its contents.
 - a Resend account (https://resend.com) with your sending domain verified, and an API key. LiveReview emails
   sign-in codes and invitations through it.
 
-LiveReview itself has three small npm dependencies (chokidar, diff2html, ws) and no native modules. It never
+LiveReview itself has two small npm dependencies (diff2html, ws) and no native modules. It never
 downloads or installs programs.
 
 ## Setup on macOS
