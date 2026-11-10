@@ -269,7 +269,9 @@ test('our own git reads do not fire onChange (no recompute loop)', () =>
     await repo.commit('init');
     await repo.write('a.txt', 'changed\n');
     await pool.acquire(1, repo.dir);
-    await sleep(SETTLE);
+    // FSEvents may still report the write made just before acquire; only what follows the reads counts.
+    await sleep(QUIET);
+    calls.length = 0;
     await liveDiff(repo.dir);
     await liveDiff(repo.dir);
     await runGit(repo.dir, ['status']);
