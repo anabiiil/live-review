@@ -14,7 +14,8 @@ function splitPaths(out) {
 
 /**
  * Show which files of a repository reviewers would and would not see.
- * Considers tracked files plus untracked files that are not git-ignored.
+ * Considers tracked files plus untracked files that are not git-ignored; tracked files that match
+ * .gitignore count as hidden.
  * @param {string} path absolute folder path; must be a repository root
  * @param {string[]} [extraHidden] additional basename globs
  * @returns {Promise<{root:string, visible:string[], hidden:string[]}>}
@@ -22,16 +23,19 @@ function splitPaths(out) {
  */
 export async function previewProject(path, extraHidden = []) {
   const root = await validateRepoRoot(path);
-  const [tracked, untracked] = await Promise.all([
+  const [tracked, untracked, trackedIgnored] = await Promise.all([
     runGit(root, ['ls-files', '-z']),
     runGit(root, ['ls-files', '--others', '--exclude-standard', '-z']),
+    runGit(root, ['ls-files', '--cached', '--ignored', '--exclude-standard', '-z']),
   ]);
   const all = new Set([...splitPaths(tracked.stdout), ...splitPaths(untracked.stdout)]);
+  // Tracked files that match .gitignore are hidden too, like in the live view.
+  const ignored = new Set(splitPaths(trackedIgnored.stdout));
   /** @type {string[]} */
   const visible = [];
   /** @type {string[]} */
   const hidden = [];
-  for (const p of all) (isHidden(p, extraHidden) ? hidden : visible).push(p);
+  for (const p of all) (ignored.has(p) || isHidden(p, extraHidden) ? hidden : visible).push(p);
   const cmp = (/** @type {string} */ a, /** @type {string} */ b) => (a < b ? -1 : a > b ? 1 : 0);
   return { root, visible: visible.sort(cmp), hidden: hidden.sort(cmp) };
 }

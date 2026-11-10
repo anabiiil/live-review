@@ -227,6 +227,33 @@ test('liveDiff: hidden rename away from a secret is hidden', async () => {
   });
 });
 
+test('liveDiff: tracked files that match .gitignore are hidden (modified, staged removal, renamed)', async () => {
+  await withRepo(async (repo) => {
+    await repo.write('config/local.yml', 'token: ignoredsecret1\n');
+    await repo.write('build/out.txt', 'ignoredsecret2\n');
+    await repo.write('cache.db', 'ignoredsecret3\n');
+    await repo.write('moved.txt', 'ignoredsecret4\nline\nline\nline\nline\n');
+    await repo.write('src/a.js', 'a\n');
+    await repo.commit('init');
+    await repo.write('.gitignore', 'local.yml\nbuild/\ncache.db\nmoved.txt\n');
+    await repo.write('config/local.yml', 'token: ignoredsecret5\n');
+    await repo.write('build/out.txt', 'ignoredsecret6\n');
+    await repo.git('rm', '-q', '--cached', 'cache.db');
+    await repo.git('mv', 'moved.txt', 'kept.txt');
+    await repo.write('src/a.js', 'b\n');
+    const res = await liveDiff(repo.dir, { extraHidden: [] });
+    for (const p of ['config/local.yml', 'build/out.txt', 'cache.db', 'kept.txt']) {
+      const f = byPath(res.files, p);
+      assert.ok(f, p);
+      assert.equal(f.hidden, true, p);
+      assert.deepEqual(f.hunks, [], p);
+    }
+    assert.equal(byPath(res.files, 'src/a.js').hidden, false);
+    assert.equal(byPath(res.files, '.gitignore').hidden, false);
+    assert.doesNotMatch(JSON.stringify(res), /ignoredsecret/);
+  });
+});
+
 test('liveDiff: untracked file over 1 MB is large without content', async () => {
   await withRepo(async (repo) => {
     await repo.write('a.txt', 'a\n');

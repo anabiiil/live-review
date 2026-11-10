@@ -49,11 +49,14 @@ export function isHidden(path, extra = []) {
  * Both `path` and `oldPath` are checked so a rename away from a secret file is also hidden.
  * @param {FileDiff[]} files
  * @param {string[]} [extra]
+ * @param {Set<string>} [alsoHidden] exact repo-relative paths to hide as well (e.g. tracked but git-ignored)
  * @returns {FileDiff[]}
  */
-export function redactFiles(files, extra = []) {
+export function redactFiles(files, extra = [], alsoHidden = new Set()) {
+  /** @param {string|null} p */
+  const hide = (p) => p !== null && (alsoHidden.has(p) || isHidden(p, extra));
   return files.map((f) => {
-    if (!isHidden(f.path, extra) && !(f.oldPath && isHidden(f.oldPath, extra))) return f;
+    if (!hide(f.path) && !hide(f.oldPath)) return f;
     return {
       ...f,
       hidden: true,

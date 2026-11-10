@@ -92,6 +92,17 @@ test('redactFiles hides a renamed file whose oldPath is hidden', () => {
   assert.doesNotMatch(out.patch, /SECRET/);
 });
 
+test('redactFiles also hides exact paths passed in alsoHidden (path or oldPath)', () => {
+  const [a, b, c] = redactFiles(
+    [file('config/local.yml'), file('kept.txt', { oldPath: 'moved.txt', status: 'renamed' }), file('src/a.js')],
+    [],
+    new Set(['config/local.yml', 'moved.txt']),
+  );
+  assert.equal(a.hidden, true);
+  assert.equal(b.hidden, true);
+  assert.equal(c.hidden, false);
+});
+
 test('redactFiles keeps binary and large flags and honours extra globs', () => {
   const k = file('x/server.key', { binary: true, large: true });
   const y = file('conf/app.yml');

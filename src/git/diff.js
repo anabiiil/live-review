@@ -209,7 +209,32 @@ export async function liveDiff(root, { extraHidden = [] } = {}) {
     for (const f of batch) if (f) untracked.push(f);
   }
 
-  return { head, files: redactFiles([...tracked, ...untracked], extraHidden), untrackedTruncated };
+  const ignored = await ignoredPaths(root, tracked);
+  return { head, files: redactFiles([...tracked, ...untracked], extraHidden, ignored), untrackedTruncated };
+}
+
+/**
+ * Paths of changed tracked files (new or old side) that match .gitignore: tracked anyway, but the owner
+ * meant them to stay private, so they are hidden like the hidden list.
+ * @param {string} root
+ * @param {FileDiff[]} files
+ * @returns {Promise<Set<string>>}
+ */
+async function ignoredPaths(root, files) {
+  const paths = new Set();
+  for (const f of files) {
+    paths.add(f.path);
+    if (f.oldPath) paths.add(f.oldPath);
+  }
+  if (paths.size === 0) return new Set();
+  // --no-index: check the ignore rules even for paths that are in the index.
+  const { stdout, code } = await runGit(root, ['check-ignore', '--no-index', '--stdin', '-z'], {
+    input: [...paths].join('\0') + '\0',
+    allowFail: true,
+  });
+  // Exit code 1 means nothing matched; anything else is a failure, and failing closed shows nothing.
+  if (code !== 0 && code !== 1) throw new Error(`git check-ignore failed with exit code ${code}`);
+  return new Set(stdout.split('\0').filter((p) => p !== ''));
 }
 
 /**

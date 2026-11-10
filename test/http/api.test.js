@@ -173,6 +173,33 @@ test('live diff shows the modified file and never the .env content', async () =>
   assert.ok(!res.body.includes(SECRET));
 });
 
+test('tracked files that match .gitignore are hidden in the live view and cannot be commented on', async () => {
+  const repo = await makeTmpRepo();
+  const { projects } = ctx.app.services;
+  try {
+    await repo.write('src/b.js', 'b\n');
+    await repo.write('config/local.yml', 'token: trackedignoredvalue\n');
+    await repo.commit('init');
+    await repo.write('.gitignore', 'local.yml\n');
+    await repo.write('config/local.yml', 'token: trackedignoredvalue2\n');
+    const p = await projects.add({ path: repo.dir, name: 'Ignored Tracked' });
+    projects.addMember(p.id, 'alice@example.com');
+    const cookie = await aliceCookie();
+    const res = await pub(`/api/p/${p.slug}/live`, { cookie });
+    assert.equal(res.status, 200);
+    const f = res.json().files.find((/** @type {any} */ x) => x.path === 'config/local.yml');
+    assert.equal(f.hidden, true);
+    assert.doesNotMatch(res.body, /trackedignoredvalue/);
+    const post = await pub(`/api/p/${p.slug}/comments`, {
+      method: 'POST', cookie, body: { target: 'live', path: 'config/local.yml', line: 1, side: 'new', body: 'x' },
+    });
+    assert.equal(post.status, 400);
+    projects.remove(p.id);
+  } finally {
+    await repo.cleanup();
+  }
+});
+
 test('commits list, commit detail and unknown commit', async () => {
   const cookie = await aliceCookie();
   const list = await pub('/api/p/nwc-legal/commits?page=1', { cookie });

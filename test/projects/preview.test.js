@@ -27,6 +27,22 @@ test('preview splits hidden and visible files, sorted, including untracked but n
   }
 });
 
+test('preview lists tracked files that match .gitignore as hidden', async () => {
+  const repo = await makeTmpRepo();
+  try {
+    await repo.write('src/a.js', 'x');
+    await repo.write('config/local.yml', 'secret');
+    await repo.write('build/out.txt', 'o');
+    await repo.commit('init');
+    await repo.write('.gitignore', 'local.yml\nbuild/\n');
+    const r = await previewProject(repo.dir, []);
+    assert.deepEqual(r.hidden, ['build/out.txt', 'config/local.yml']);
+    assert.deepEqual(r.visible, ['.gitignore', 'src/a.js']);
+  } finally {
+    await repo.cleanup();
+  }
+});
+
 test('preview applies extraHidden basename globs', async () => {
   const repo = await makeTmpRepo();
   try {
