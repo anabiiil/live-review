@@ -47,9 +47,11 @@ const token = app.services.owner.issueOneTime();
 const adminUrl = `http://localhost:${ports.adminPort}/admin?t=${token}`;
 console.log('LiveReview is running.');
 console.log(`  Admin (this computer only): ${adminUrl}`);
+if (config.adminHost) console.log(`  Admin, always the same link: https://${config.adminHost}`);
 console.log(config.publicHost ? `  Public: https://${config.publicHost}` : '  Public: not configured yet — open the admin page to set it up');
 
-if (process.env.LIVEREVIEW_NO_BROWSER !== '1') openBrowser(adminUrl);
+// --no-browser: started in the background (e.g. by Mullion), where a new browser tab on every start would be noise.
+if (process.env.LIVEREVIEW_NO_BROWSER !== '1' && !process.argv.includes('--no-browser')) openBrowser(adminUrl);
 
 /** @type {import('node:child_process').ChildProcess|null} */
 let tunnel = null;

@@ -37,7 +37,7 @@ function contentSecurityPolicy(listener) {
   const host = listener.config.publicHost;
   const sockets =
     listener.kind === 'admin'
-      ? ` ws://localhost:${listener.port} ws://127.0.0.1:${listener.port}`
+      ? ` ws://localhost:${listener.port} ws://127.0.0.1:${listener.port}${listener.config.adminHost ? ` wss://${listener.config.adminHost}` : ''}`
       : host
         ? ` wss://${host}`
         : '';

@@ -121,7 +121,21 @@ Things to know:
   what it is doing. When you press Ctrl+C, LiveReview stops it again.
 - The sender address can be a bare address (`review@example.com`) or with a name (`LiveReview <review@example.com>`).
 - Stop with Ctrl+C. Changed ports take effect after a restart.
-- Set `LIVEREVIEW_NO_BROWSER=1` to stop it opening the browser.
+- Set `LIVEREVIEW_NO_BROWSER=1` (or pass `--no-browser`) to stop it opening the browser.
+
+### A fixed admin link on a local domain (optional)
+
+If you run a local HTTPS proxy such as Mullion or Caddy, you can give the admin page a fixed address, for example
+`https://livereview.test`, instead of the one-time link:
+
+1. Add `"adminHost": "livereview.test"` to `config.json` (see "Where the data is").
+2. Point the domain at `http://127.0.0.1:4318` in your proxy. With Mullion: in a folder containing LiveReview, run
+   `mullion link livereview`, `mullion port dev livereview 4318`, `mullion dev idle --site livereview --never` and
+   `mullion secure livereview`; Mullion then runs `npm run dev` (LiveReview without opening a browser) in the
+   background.
+
+Requests on that domain are signed in as you without a token. Only this computer resolves the domain and the admin
+listener only listens on 127.0.0.1, so treat it like the one-time link: don't set it on a computer you share.
 
 ## Inviting a reviewer
 

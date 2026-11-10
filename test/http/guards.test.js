@@ -158,3 +158,26 @@ test('servers: admin listener checks Host/Origin and requires the owner cookie',
   });
   assert.equal(loginReq.status, 404);
 });
+
+test('adminHost: the local domain (e.g. via Mullion/Caddy) reaches the admin listener and signs the owner in', () => {
+  const { listener } = listenerFor('admin', 4318);
+  const adm = { ...listener, config: { ...config, adminHost: 'livereview.test' } };
+  assert.equal(hostAllowed(fakeReq({ host: 'livereview.test' }), adm), true);
+  assert.equal(hostAllowed(fakeReq({ host: 'LiveReview.test' }), adm), true);
+  for (const h of ['livereview.test:4318', 'evil.test', 'x.livereview.test', HOST]) {
+    assert.equal(hostAllowed(fakeReq({ host: h }), adm), false, h);
+  }
+  assert.equal(originAllowed(fakeReq({ host: 'livereview.test', origin: 'https://livereview.test' }, 'POST'), adm), true);
+  for (const o of ['http://livereview.test', 'https://evil.test', 'null', 'http://localhost:4318']) {
+    assert.equal(originAllowed(fakeReq({ host: 'livereview.test', origin: o }, 'POST'), adm), false, o);
+  }
+  // The local domain is the owner's: no cookie needed there, still needed on localhost.
+  assert.deepEqual(resolveViewer(fakeReq({ host: 'livereview.test' }), adm), { kind: 'owner', email: 'owner@example.test', name: 'Olivia' });
+  assert.equal(resolveViewer(fakeReq({ host: 'localhost:4318' }), adm), null);
+  // Never on the public listener, and not when no adminHost is set.
+  const pub = { ...listenerFor('public').listener, config: { ...config, adminHost: 'livereview.test' } };
+  assert.equal(hostAllowed(fakeReq({ host: 'livereview.test' }), pub), false);
+  assert.equal(resolveViewer(fakeReq({ host: 'livereview.test' }), pub), null);
+  assert.equal(hostAllowed(fakeReq({ host: '' }), { ...listener, config: { ...config, adminHost: '' } }), false);
+  assert.equal(resolveViewer(fakeReq({ host: '' }), { ...listener, config: { ...config, adminHost: '' } }), null);
+});

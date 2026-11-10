@@ -6,7 +6,8 @@ import { randomBytes } from 'node:crypto';
 /**
  * @typedef {{publicHost:string, resendApiKey:string, fromEmail:string, ownerName:string,
  *   ownerEmail:string, tunnelName:string, publicPort:number, adminPort:number,
- *   ownerEmailNotifications:boolean}} Config
+ *   ownerEmailNotifications:boolean, adminHost:string}} Config
+ * adminHost: optional local domain for the admin page (e.g. livereview.test behind Mullion/Caddy)
  */
 
 /** @returns {Config} */
@@ -20,6 +21,7 @@ const defaults = () => ({
   publicPort: 4317,
   adminPort: 4318,
   ownerEmailNotifications: true,
+  adminHost: '',
 });
 
 /** @returns {string} Absolute path of the LiveReview data directory. */

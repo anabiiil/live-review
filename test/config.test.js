@@ -67,6 +67,7 @@ test('loadConfig on an empty dir returns defaults', async () => {
       publicPort: 4317,
       adminPort: 4318,
       ownerEmailNotifications: true,
+      adminHost: '',
     });
   });
 });

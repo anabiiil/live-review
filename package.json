@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node bin/livereview.js",
+    "dev": "node bin/livereview.js --no-browser",
     "test": "node --import ./test/helpers/quiet-sqlite.js --test --test-concurrency=1 \"test/**/*.test.js\"",
     "check:ui": "node test/ui/browser/diff-marks.check.mjs"
   },

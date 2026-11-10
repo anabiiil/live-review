@@ -37,7 +37,21 @@ export function parseCookies(header) {
 const hostOf = (req) => String(req.headers.host ?? '').toLowerCase();
 
 /**
- * Public: Host must equal config.publicHost. Admin: `localhost:{port}` or `127.0.0.1:{port}`.
+ * The owner's local domain for the admin page (config.adminHost, e.g. `livereview.test` served by a local
+ * HTTPS proxy such as Mullion/Caddy), lowercased; '' when not set.
+ * @param {Listener} listener
+ */
+const adminHostOf = (listener) => String(listener.config.adminHost ?? '').trim().toLowerCase();
+
+/**
+ * True when an admin-listener request came in on the owner's local domain.
+ * @param {Req} req
+ * @param {Listener} listener
+ */
+const onAdminHost = (req, listener) => listener.kind === 'admin' && adminHostOf(listener) !== '' && hostOf(req) === adminHostOf(listener);
+
+/**
+ * Public: Host must equal config.publicHost. Admin: `localhost:{port}`, `127.0.0.1:{port}`, or config.adminHost.
  * @param {Req} req
  * @param {Listener} listener
  */
@@ -45,7 +59,7 @@ export function hostAllowed(req, listener) {
   const host = hostOf(req);
   if (host === '') return false;
   if (listener.kind === 'public') return host === String(listener.config.publicHost ?? '').toLowerCase();
-  return host === `localhost:${listener.port}` || host === `127.0.0.1:${listener.port}`;
+  return host === `localhost:${listener.port}` || host === `127.0.0.1:${listener.port}` || onAdminHost(req, listener);
 }
 
 /** @param {string|undefined} method */
@@ -61,13 +75,18 @@ export function originAllowed(req, listener) {
   const origin = req.headers.origin;
   if (typeof origin !== 'string' || origin === '') return false;
   const expected =
-    listener.kind === 'public' ? `https://${String(listener.config.publicHost ?? '').toLowerCase()}` : `http://${hostOf(req)}`;
+    listener.kind === 'public'
+      ? `https://${String(listener.config.publicHost ?? '').toLowerCase()}`
+      : `${onAdminHost(req, listener) ? 'https' : 'http'}://${hostOf(req)}`;
   return origin.toLowerCase() === expected && hostAllowed(req, listener);
 }
 
 /**
  * Public listener: the reviewer behind a valid `lr_session`. Admin listener: the owner iff `lr_owner` is a
- * live owner session. Each listener ignores the other's cookie.
+ * live owner session, or the request came in on config.adminHost. Each listener ignores the other's cookie.
+ * adminHost is the owner's own local domain (only this computer resolves it, and the admin listener only
+ * listens on 127.0.0.1); cross-site pages still cannot read it (same-origin policy) or change anything
+ * (Origin check), so it is treated like the one-time link.
  * @param {Req} req
  * @param {Listener} listener
  * @returns {Viewer|null}
@@ -76,7 +95,7 @@ export function resolveViewer(req, listener) {
   const cookies = parseCookies(req.headers.cookie);
   if (listener.kind === 'admin') {
     const token = cookies[OWNER_COOKIE];
-    if (!token || !listener.owner.isOwnerSession(token)) return null;
+    if (!onAdminHost(req, listener) && (!token || !listener.owner.isOwnerSession(token))) return null;
     return { kind: 'owner', email: normalizeEmail(listener.config.ownerEmail ?? ''), name: listener.config.ownerName || null };
   }
   const token = cookies[SESSION_COOKIE];
@@ -96,6 +115,7 @@ export function resolveViewer(req, listener) {
 export function sessionCheck(req, listener) {
   const cookies = parseCookies(req.headers.cookie);
   if (listener.kind === 'admin') {
+    if (onAdminHost(req, listener)) return () => true;
     const token = cookies[OWNER_COOKIE] ?? '';
     return () => listener.owner.isOwnerSession(token);
   }
