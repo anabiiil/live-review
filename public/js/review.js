@@ -88,6 +88,9 @@ export function createReview({ slug, target, root, me }) {
       active instanceof HTMLTextAreaElement && active.dataset.draft
         ? { key: active.dataset.draft, start: active.selectionStart, end: active.selectionEnd }
         : null;
+    // Buttons that re-render the page (marks, file header controls, Resolve) carry a stable key.
+    const control = ui.focusKey ?? (active instanceof HTMLElement && root.contains(active) ? active.dataset.focusKey ?? null : null);
+    ui.focusKey = null;
 
     build();
 
@@ -103,6 +106,9 @@ export function createReview({ slug, target, root, me }) {
         } else if (focus) ta.setSelectionRange(focus.start, focus.end);
       }
       ui.pendingFocus = null;
+    } else if (control) {
+      const el = [...root.querySelectorAll('[data-focus-key]')].find((n) => /** @type {HTMLElement} */ (n).dataset.focusKey === control);
+      if (el instanceof HTMLElement) el.focus({ preventScroll: true });
     }
     ui.opening.clear();
     applyHash();

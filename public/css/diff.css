@@ -93,8 +93,9 @@ table.diff td.margin { position: sticky; right: 0; z-index: 1; padding: 0 0 0 6p
   box-shadow: 0 1px 0 color-mix(in srgb, var(--hl) 60%, var(--ink));
   transition: background-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
 }
-/* A full-size touch target around the small tab. */
-.mark::after { content: ""; position: absolute; inset: -8px -6px; }
+/* A wider touch target around the small tab: the full margin cell across, and only its own row down, so it never
+   covers the mark on the next line. */
+.mark::after { content: ""; position: absolute; inset: -1px -6px 0; }
 .mark:hover { background: color-mix(in srgb, var(--hl) 88%, var(--ink)); }
 .mark.is-open { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 3px color-mix(in srgb, var(--hl) 70%, var(--ink)); }
 .mark.resolved { background: none; color: var(--resolved); box-shadow: none; font-weight: 500; opacity: 0.8; }

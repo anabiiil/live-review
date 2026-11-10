@@ -23,6 +23,8 @@ export const MAX_BODY = 5000;
  * @property {Set<number>} opening threads opened since the last render (they animate in once)
  * @property {Set<string>} openSections open collapsible sections
  * @property {string|null} pendingFocus draft key to focus after the next render (a composer was just opened)
+ * @property {string|null} focusKey `data-focus-key` of a control to refocus after the next render (one that a request
+ *   disabled, so the focus could not be read back from the page)
  * @property {boolean|null} sidebarOpen
  */
 
@@ -32,7 +34,7 @@ export function createUiState(mode) {
     mode, composers: new Map(), replying: new Set(), editing: new Set(), drafts: new Map(), busy: new Set(), errors: new Map(),
     expandedFiles: new Set(), collapsedFiles: new Set(), expandedResolved: new Set(), openThreads: new Set(), opening: new Set(),
     openSections: new Set(),
-    pendingFocus: null, sidebarOpen: null,
+    pendingFocus: null, focusKey: null, sidebarOpen: null,
   };
 }
 
@@ -183,8 +185,10 @@ const isMine = (env, c) => c.authorEmail.toLowerCase() === env.me.email.toLowerC
  * @param {string} text
  * @param {(e:Event)=>void} onclick
  * @param {string} [extra]
+ * @param {string|null} [focusKey] stable `data-focus-key`, so focus survives a re-render
  */
-const action = (text, onclick, extra = '') => h('button', { class: `link${extra ? ` ${extra}` : ''}`, type: 'button', text, onclick });
+const action = (text, onclick, extra = '', focusKey = null) =>
+  h('button', { class: `link${extra ? ` ${extra}` : ''}`, type: 'button', text, onclick, 'data-focus-key': focusKey });
 
 /**
  * One comment: avatar initials, name, relative time, body, then quiet actions.
@@ -246,6 +250,8 @@ function renderComment(c, env, { top, thread }) {
     actions.append(
       action(thread.resolved ? 'Reopen' : 'Resolve', async (e) => {
         const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
+        // Disabling the button drops its focus; bring it back to the rebuilt button (now Reopen / Resolve).
+        if (document.activeElement === btn) ui.focusKey = `resolve:${thread.id}`;
         btn.disabled = true;
         try {
           await env.setResolved(thread.id, !thread.resolved);
@@ -253,9 +259,10 @@ function renderComment(c, env, { top, thread }) {
           await env.refresh();
         } catch (err) {
           btn.disabled = false;
+          ui.focusKey = null;
           alert(errorText(/** @type {any} */ (err)));
         }
-      }),
+      }, '', `resolve:${thread.id}`),
     );
   }
   if (mine) {

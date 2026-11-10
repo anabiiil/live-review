@@ -4,8 +4,8 @@ import { h } from './dom.js';
 import { renderComposer, renderThread } from './comments.js';
 import { icon } from './icons.js';
 import {
-  LARGE_DIFF_LINES, commentCount, diffLineCount, diffStats, lineKey, markLabel, markSummary, maxLineLength, pairLines, rowPositions,
-  toggleThreads,
+  LARGE_DIFF_LINES, commentCount, diffLineCount, diffStats, fileLineKeys, lineKey, markLabel, markSummary, maxLineLength, pairLines,
+  rowPositions, toggleThreads,
 } from './pairing.js';
 
 /** @typedef {import('../../src/types.js').FileDiff} FileDiff */
@@ -28,6 +28,8 @@ const STATUS_TITLE = { added: 'Added', modified: 'Modified', deleted: 'Deleted',
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
 /** Matches --t-fast in tokens.css. */
 const CLOSE_MS = 150;
+/** Review states with a close animation running: toggles wait for it, so a double click does not flicker. */
+const closing = new WeakSet();
 
 /** @param {string} text */
 const note = (text) => h('p', { class: 'file-note', text });
@@ -39,6 +41,7 @@ const note = (text) => h('p', { class: 'file-note', text });
  */
 function toggle(env, ids) {
   const { ui } = env.comments;
+  if (closing.has(ui)) return;
   const leaving = ids.filter((id) => ui.openThreads.has(id));
   const opened = toggleThreads(ui.openThreads, ids);
   if (opened) {
@@ -52,7 +55,11 @@ function toggle(env, ids) {
     return;
   }
   for (const el of els) /** @type {HTMLElement} */ (el).classList.add('closing');
-  setTimeout(() => env.comments.rerender(), CLOSE_MS);
+  closing.add(ui);
+  setTimeout(() => {
+    closing.delete(ui);
+    env.comments.rerender();
+  }, CLOSE_MS);
 }
 
 /**
@@ -115,6 +122,7 @@ function marginCell(env, positions) {
       'button',
       {
         class: cls.join(' '), type: 'button', 'aria-expanded': String(expanded), 'aria-label': markLabel(s, positions[0].line, expanded),
+        'data-focus-key': `mark:${positions[0].key}`,
         title: s.resolved ? `Resolved: ${commentCount(s.comments)}` : commentCount(s.comments),
         onclick: () => toggle(env, s.ids),
       },
@@ -246,7 +254,9 @@ function splitTable(file, env) {
  * @param {DiffEnv} env
  */
 function fileComments(file, env) {
-  const threads = env.byPath.get(file.path) ?? [];
+  // Only threads on lines this diff shows: the others are listed below the diff.
+  const keys = fileLineKeys(file);
+  const threads = (env.byPath.get(file.path) ?? []).filter((t) => keys.has(lineKey(t.path, t.side, t.line)));
   if (!threads.length) return null;
   const { ui } = env.comments;
   const s = markSummary(threads);
@@ -256,6 +266,7 @@ function fileComments(file, env) {
     'button',
     {
       class: `file-comments${s.resolved ? ' resolved' : ''}`, type: 'button', 'aria-expanded': String(expanded),
+      'data-focus-key': `filecomments:${file.path}`,
       'aria-label': `${expanded ? 'Hide' : 'Show'} ${s.resolved ? `${text}, all resolved` : text} in ${file.path}`,
       onclick: () => {
         // Make sure the lines are on screen before opening their threads.
@@ -285,6 +296,7 @@ export function renderFile(file, env) {
     'button',
     {
       class: 'file-toggle', type: 'button', 'aria-expanded': String(!collapsed), 'aria-label': `${collapsed ? 'Expand' : 'Collapse'} ${file.path}`,
+      'data-focus-key': `filetoggle:${file.path}`,
       onclick: () => {
         if (collapsed) ui.collapsedFiles.delete(file.path);
         else ui.collapsedFiles.add(file.path);

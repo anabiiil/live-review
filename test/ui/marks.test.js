@@ -47,3 +47,22 @@ test('open threads are part of the ui state that survives re-rendering', () => {
   assert.ok(ui.openThreads instanceof Set);
   assert.equal(ui.openThreads.size, 0);
 });
+
+test('fileLineKeys lists the positions a file diff renders (old side for deletions, new for additions, both for context)', async () => {
+  const { fileLineKeys } = await import('../../public/js/pairing.js');
+  const file = {
+    path: 'a.js',
+    hunks: [{ header: '@@', lines: [
+      { type: 'ctx', oldNo: 1, newNo: 1, text: '' },
+      { type: 'del', oldNo: 2, newNo: null, text: '' },
+      { type: 'add', oldNo: null, newNo: 2, text: '' },
+    ] }],
+  };
+  assert.deepEqual([...fileLineKeys(file)].sort(), ['a.js:new:1', 'a.js:new:2', 'a.js:old:1', 'a.js:old:2']);
+  assert.equal(fileLineKeys({ path: 'b', hunks: [] }).size, 0);
+});
+
+test('the ui state carries a control to refocus after the next render', () => {
+  const ui = createUiState('unified');
+  assert.equal(ui.focusKey, null);
+});

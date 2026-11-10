@@ -177,3 +177,16 @@ export function flashOffset(startedAt, now) {
   const elapsed = now - startedAt;
   return elapsed >= 0 && elapsed < FLASH_MS ? elapsed : null;
 }
+
+/**
+ * Every comment position the file's diff renders a row for. Threads elsewhere in the file are listed below
+ * the diff instead, so the file header only counts and toggles threads in this set.
+ * @param {{path:string, hunks:{lines:DiffLine[]}[]}} f
+ * @returns {Set<string>}
+ */
+export function fileLineKeys(f) {
+  /** @type {Set<string>} */
+  const keys = new Set();
+  for (const h of f.hunks) for (const l of h.lines) for (const p of rowPositions(f.path, l)) keys.add(p.key);
+  return keys;
+}
